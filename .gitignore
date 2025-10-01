@@ -1,0 +1,11 @@
+# Dependencies
+node_modules/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# OS junk
+.DS_Store
+Thumbs.db
+

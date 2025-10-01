@@ -1,0 +1,5 @@
+seleniumbase
+flask
+flask_cors
+requests
+gunicorn
