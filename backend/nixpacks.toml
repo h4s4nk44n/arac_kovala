@@ -1,6 +1,6 @@
 # nixpacks.toml
 
-# Phase 1: Install system packages using chained commands for reliability
+# Phase 1: Install system packages
 [phases.setup]
 cmds = [
   # Step 1: Install all base dependencies first, including gnupg for key management
@@ -16,7 +16,15 @@ cmds = [
   "sudo apt-get install -y google-chrome-stable"
 ]
 
-# Phase 2: Explicitly define the command to start the web server
+# --- FIX ---
+# Phase 2: Explicitly define the Python package installation process to avoid "Text file busy" error
+[phases.install]
+cmds = [
+  "python -m venv --copies /opt/venv",
+  ". /opt/venv/bin/activate && pip install -r requirements.txt"
+]
+
+
+# Phase 3: Explicitly define the command to start the web server
 [start]
 cmd = "gunicorn app:app --chdir ./backend"
-
