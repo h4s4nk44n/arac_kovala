@@ -3,8 +3,8 @@
 # Phase 1: Install system packages using chained commands for reliability
 [phases.setup]
 cmds = [
-  # Step 1: Install all base dependencies first
-  "sudo apt-get update && sudo apt-get install -y --no-install-recommends ca-certificates fonts-liberation libasound2t64 libatk1.0-0 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgdk-pixbuf2.0-0 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 lsb-release xdg-utils wget xvfb",
+  # Step 1: Install all base dependencies first, including gnupg for key management
+  "sudo apt-get update && sudo apt-get install -y --no-install-recommends gnupg ca-certificates fonts-liberation libasound2t64 libatk1.0-0 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgdk-pixbuf2.0-0 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 lsb-release xdg-utils wget xvfb",
   
   # Step 2: Add Google Chrome's signing key and repository using the modern method
   "wget -q -O /tmp/google_signing_key.pub https://dl.google.com/linux/linux_signing_key.pub",
