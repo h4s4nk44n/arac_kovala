@@ -18,7 +18,9 @@ cmds = [
 
 # --- FIX ---
 # Phase 2: Explicitly override the default Python installer to prevent "Text file busy" error
-[providers.python]
+# The syntax [[providers]] denotes an array of tables, which is what Nixpacks expects.
+[[providers]]
+name = "python"
 installCmd = "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && sleep 1 && pip install -r requirements.txt"
 
 
@@ -26,4 +28,3 @@ installCmd = "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && s
 [start]
 # Assumes Railway "Root Directory" is set to 'backend'
 cmd = "gunicorn app:app"
-
