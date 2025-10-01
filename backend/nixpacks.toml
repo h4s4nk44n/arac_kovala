@@ -17,7 +17,7 @@ cmds = [
 ]
 
 # --- FIX ---
-# Phase 2: Explicitly define the Python package installation process to avoid "Text file busy" error
+# Phase 2: Explicitly define the Python package installation process in two steps to avoid "Text file busy" error
 [phases.install]
 cmds = [
   "python -m venv --copies /opt/venv",
@@ -28,3 +28,4 @@ cmds = [
 # Phase 3: Explicitly define the command to start the web server
 [start]
 cmd = "gunicorn app:app --chdir ./backend"
+
