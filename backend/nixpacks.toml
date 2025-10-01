@@ -1,6 +1,6 @@
 # nixpacks.toml
 
-# Phase 1: Install all system and language dependencies in a single, sequential block
+# Phase 1: Install system packages
 [phases.setup]
 cmds = [
   # Step 1: Install all base system dependencies first, including gnupg for key management
@@ -13,15 +13,16 @@ cmds = [
 
   # Step 3: Update package lists AGAIN to recognize the new repository, then install Chrome
   "sudo apt-get update",
-  "sudo apt-get install -y google-chrome-stable",
-
-  # Step 4: Create Python environment and install packages, with a pause to prevent race conditions
-  "python -m venv --copies /opt/venv",
-  "sleep 1",
-  ". /opt/venv/bin/activate && pip install -r requirements.txt"
+  "sudo apt-get install -y google-chrome-stable"
 ]
 
-# Phase 2: Define the command to start the web server
+# --- FIX ---
+# Phase 2: Explicitly override the default Python installer to prevent the "Text file busy" race condition
+[providers.python]
+installCmd = "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && sleep 1 && pip install -r requirements.txt"
+
+# Phase 3: Define the command to start the web server
 [start]
 # Assumes Railway "Root Directory" is set to 'backend'
 cmd = "gunicorn app:app"
+
