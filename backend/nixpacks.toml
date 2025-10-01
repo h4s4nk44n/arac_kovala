@@ -1,26 +1,29 @@
 # nixpacks.toml
 
-# Phase 1: Install system packages required for Python, Selenium, and Chrome
+# Phase 1: Install system packages
 [phases.setup]
+# Add Google Chrome's official repository before trying to install from it.
+# This is necessary because Chrome is not in the default Ubuntu sources.
+cmds = [
+  "wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -",
+  "sudo sh -c 'echo \"deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main\" >> /etc/apt/sources.list.d/google-chrome.list'"
+]
+# Install Chrome, the virtual display, and other necessary modern dependencies
 aptPkgs = [
-  "gconf-service",
   "libasound2",
   "libatk1.0-0",
-  "libc6",
   "libcairo2",
   "libcups2",
   "libdbus-1-3",
   "libexpat1",
   "libfontconfig1",
-  "libgcc1",
-  "libgconf-2-4",
   "libgdk-pixbuf2.0-0",
   "libglib2.0-0",
   "libgtk-3-0",
   "libnspr4",
+  "libnss3",
   "libpango-1.0-0",
   "libpangocairo-1.0-0",
-  "libstdc++6",
   "libx11-6",
   "libx11-xcb1",
   "libxcb1",
@@ -36,16 +39,14 @@ aptPkgs = [
   "libxtst6",
   "ca-certificates",
   "fonts-liberation",
-  "libappindicator1",
-  "libnss3",
   "lsb-release",
   "xdg-utils",
   "wget",
-  "xvfb", 
+  "xvfb",
   "google-chrome-stable"
 ]
 
-# --- FIX ---
 # Phase 2: Explicitly define the command to start the web server
 [start]
 cmd = "gunicorn app:app --chdir ./backend"
+
