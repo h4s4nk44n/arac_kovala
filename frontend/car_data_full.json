@@ -1,0 +1,1926 @@
+{
+    "Abarth": {
+        "url": "https://www.sahibinden.com/abarth",
+        "series": {}
+    },
+    "Aion": {
+        "url": "https://www.sahibinden.com/aion",
+        "series": {
+            "S": {
+                "url": "https://www.sahibinden.com/aion-s",
+                "models": {}
+            },
+            "S Plus": {
+                "url": "https://www.sahibinden.com/aion-s-plus",
+                "models": {}
+            }
+        }
+    },
+    "Alfa Romeo": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo",
+        "series": {
+            "Junior Elettrica": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-junior-elettrica",
+                "models": {}
+            },
+            "Junior Ibrida": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-junior-ibrida",
+                "models": {}
+            },
+            "Stelvio": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-stelvio",
+                "models": {
+                    "2.0": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-stelvio-2.0",
+                        "packets": []
+                    },
+                    "2.0 T": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-stelvio-2.0-t",
+                        "packets": []
+                    }
+                }
+            },
+            "Tonale": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-tonale",
+                "models": {
+                    "1.3 Hybrid": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-tonale-1.3-hybrid",
+                        "packets": []
+                    },
+                    "1.5 Hybrid": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-tonale-1.5-hybrid",
+                        "packets": [
+                            "Edizione Speciale",
+                            "Speciale",
+                            "Ti",
+                            "Tributo",
+                            "Veloce"
+                        ]
+                    },
+                    "1.6 D": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-alfa-romeo-tonale-1.6-d",
+                        "packets": [
+                            "Speciale",
+                            "Sprint",
+                            "Ti"
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    "Alpine": {
+        "url": "https://www.sahibinden.com/alpine",
+        "series": {}
+    },
+    "Anadol": {
+        "url": "https://www.sahibinden.com/anadol",
+        "series": {}
+    },
+    "Arora": {
+        "url": "https://www.sahibinden.com/arora",
+        "series": {}
+    },
+    "Aston Martin": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-aston-martin",
+        "series": {}
+    },
+    "Audi": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi",
+        "series": {
+            "E-Tron": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-e-tron",
+                "models": {
+                    "55 Quattro": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-e-tron-55-quattro",
+                        "packets": []
+                    },
+                    "S Quattro": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-e-tron-s-quattro",
+                        "packets": []
+                    }
+                }
+            },
+            "E-Tron Sportback": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-e-tron-sportback",
+                "models": {}
+            },
+            "Q2": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q2",
+                "models": {
+                    "30 TDI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q2-30-tdi",
+                        "packets": [
+                            "Design",
+                            "Dynamic",
+                            "Sport"
+                        ]
+                    },
+                    "30 TFSI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q2-30-tfsi",
+                        "packets": [
+                            "Design",
+                            "Sport"
+                        ]
+                    },
+                    "35 TFSI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q2-35-tfsi",
+                        "packets": [
+                            "Advanced",
+                            "Design",
+                            "Dynamic",
+                            "Sport"
+                        ]
+                    },
+                    "1.0 TFSI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q2-1.0-tfsi",
+                        "packets": [
+                            "Design",
+                            "Dynamic",
+                            "Sport"
+                        ]
+                    },
+                    "1.4 TFSI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q2-1.4-tfsi",
+                        "packets": [
+                            "Design",
+                            "Sport"
+                        ]
+                    },
+                    "1.6 TDI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q2-1.6-tdi",
+                        "packets": [
+                            "Design",
+                            "Dynamic",
+                            "Sport"
+                        ]
+                    }
+                }
+            },
+            "Q3": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q3",
+                "models": {
+                    "35 TFSI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q3-35-tfsi",
+                        "packets": [
+                            "Advanced",
+                            "S Line"
+                        ]
+                    },
+                    "1.4 TFSi": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q3-1.4-tfsi",
+                        "packets": []
+                    },
+                    "2.0 TDI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q3-2.0-tdi",
+                        "packets": []
+                    }
+                }
+            },
+            "Q3 Sportback": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q3-sportback",
+                "models": {
+                    "35 TFSI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q3-sportback-35-tfsi",
+                        "packets": []
+                    },
+                    "45 TFSI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q3-sportback-45-tfsi",
+                        "packets": []
+                    }
+                }
+            },
+            "Q4 E-tron": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q4-e-tron",
+                "models": {
+                    "40 e-Tron": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q4-e-tron-40-e-tron",
+                        "packets": []
+                    },
+                    "45 e-Tron": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q4-e-tron-45-e-tron",
+                        "packets": []
+                    },
+                    "55 e-Tron": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q4-e-tron-55-e-tron",
+                        "packets": []
+                    }
+                }
+            },
+            "Q4 Sportback": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q4-sportback",
+                "models": {
+                    "40 e-Tron": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q4-sportback-40-e-tron",
+                        "packets": []
+                    },
+                    "45 e-Tron": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q4-sportback-45-e-tron",
+                        "packets": []
+                    },
+                    "55 e-Tron": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q4-sportback-55-e-tron",
+                        "packets": []
+                    }
+                }
+            },
+            "Q5": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q5",
+                "models": {
+                    "40 TDI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q5-40-tdi",
+                        "packets": [
+                            "Quattro Advanced",
+                            "Quattro Design",
+                            "Quattro S Line",
+                            "Quattro Sport"
+                        ]
+                    },
+                    "45 TFSI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q5-45-tfsi",
+                        "packets": []
+                    },
+                    "2.0 TDI Quattro": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q5-2.0-tdi-quattro",
+                        "packets": []
+                    },
+                    "2.0 TDI Quattro Design": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q5-2.0-tdi-quattro-design",
+                        "packets": []
+                    },
+                    "2.0 TDI Quattro Dynamic": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q5-2.0-tdi-quattro-dynamic",
+                        "packets": []
+                    },
+                    "2.0 TDI Quattro Sport": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-audi-q5-2.0-tdi-quattro-sport",
+                        "packets": []
+                    }
+                }
+            }
+        }
+    },
+    "Cupra": {
+        "url": "https://www.sahibinden.com/cupra",
+        "series": {
+            "Born": {
+                "url": "https://www.sahibinden.com/cupra-born",
+                "models": {}
+            },
+            "Leon": {
+                "url": "https://www.sahibinden.com/cupra-leon",
+                "models": {
+                    "1.5 eTSI": {
+                        "url": "https://www.sahibinden.com/cupra-leon-1.5-etsi",
+                        "packets": [
+                            "Standart",
+                            "Supreme",
+                            "VZ Line"
+                        ]
+                    },
+                    "2.0 TSI": {
+                        "url": "https://www.sahibinden.com/cupra-leon-2.0-tsi",
+                        "packets": []
+                    }
+                }
+            }
+        }
+    },
+    "Dacia": {
+        "url": "https://www.sahibinden.com/dacia",
+        "series": {
+            "Jogger": {
+                "url": "https://www.sahibinden.com/dacia-jogger",
+                "models": {
+                    "1.0 ECO-G": {
+                        "url": "https://www.sahibinden.com/dacia-jogger-1.0-eco-g",
+                        "packets": [
+                            "Essential",
+                            "Expression",
+                            "Extreme",
+                            "Seri Limite Extreme"
+                        ]
+                    },
+                    "1.0 T": {
+                        "url": "https://www.sahibinden.com/dacia-jogger-1.0-t",
+                        "packets": [
+                            "Essential",
+                            "Expression",
+                            "Extreme",
+                            "Seri Limite Extreme"
+                        ]
+                    },
+                    "1.6 Hybrid": {
+                        "url": "https://www.sahibinden.com/dacia-jogger-1.6-hybrid",
+                        "packets": []
+                    }
+                }
+            },
+            "Lodgy": {
+                "url": "https://www.sahibinden.com/dacia-lodgy",
+                "models": {
+                    "1.3 TCE": {
+                        "url": "https://www.sahibinden.com/dacia-lodgy-1.3-tce",
+                        "packets": []
+                    },
+                    "1.5 BlueDCI": {
+                        "url": "https://www.sahibinden.com/dacia-lodgy-1.5-bluedci",
+                        "packets": [
+                            "Ambiance",
+                            "Laureate",
+                            "Stepway"
+                        ]
+                    },
+                    "1.5 dCi": {
+                        "url": "https://www.sahibinden.com/dacia-lodgy-1.5-dci",
+                        "packets": [
+                            "Allroad",
+                            "Laureate",
+                            "Stepway",
+                            "Stepway Style"
+                        ]
+                    },
+                    "1.6 ECO-G": {
+                        "url": "https://www.sahibinden.com/dacia-lodgy-1.6-eco-g",
+                        "packets": []
+                    }
+                }
+            },
+            "Logan": {
+                "url": "https://www.sahibinden.com/dacia-logan",
+                "models": {
+                    "0.9 Tce MCV": {
+                        "url": "https://www.sahibinden.com/dacia-logan-0.9-tce-mcv",
+                        "packets": []
+                    },
+                    "1.0 MCV": {
+                        "url": "https://www.sahibinden.com/dacia-logan-1.0-mcv",
+                        "packets": []
+                    },
+                    "1.2": {
+                        "url": "https://www.sahibinden.com/dacia-logan-1.2",
+                        "packets": [
+                            "1.2",
+                            "Ambiance"
+                        ]
+                    },
+                    "1.2 MCV": {
+                        "url": "https://www.sahibinden.com/dacia-logan-1.2-mcv",
+                        "packets": []
+                    },
+                    "1.4": {
+                        "url": "https://www.sahibinden.com/dacia-logan-1.4",
+                        "packets": [
+                            "1.4",
+                            "Ambiance",
+                            "Black Line",
+                            "Laureate"
+                        ]
+                    },
+                    "1.5 dCi": {
+                        "url": "https://www.sahibinden.com/dacia-logan-1.5-dci",
+                        "packets": [
+                            "Ambiance",
+                            "Black Line",
+                            "Laureate"
+                        ]
+                    },
+                    "1.5 dCi MCV": {
+                        "url": "https://www.sahibinden.com/dacia-logan-1.5-dci-mcv",
+                        "packets": [
+                            "Ambiance",
+                            "Black Line",
+                            "Laureate"
+                        ]
+                    },
+                    "1.6": {
+                        "url": "https://www.sahibinden.com/dacia-logan-1.6",
+                        "packets": [
+                            "Ambiance",
+                            "Laureate",
+                            "Prestige"
+                        ]
+                    }
+                }
+            },
+            "Sandero": {
+                "url": "https://www.sahibinden.com/dacia-sandero",
+                "models": {
+                    "0.9 ECO-G": {
+                        "url": "https://www.sahibinden.com/dacia-sandero-0.9-eco-g",
+                        "packets": []
+                    },
+                    "0.9 TCe": {
+                        "url": "https://www.sahibinden.com/dacia-sandero-0.9-tce",
+                        "packets": [
+                            "Stepway",
+                            "Stepway Ambiance",
+                            "Stepway Easy-R",
+                            "Stepway Style",
+                            "Techroad",
+                            "Turbo Stepway",
+                            "Turbo Stepway Easy-R"
+                        ]
+                    },
+                    "1.0": {
+                        "url": "https://www.sahibinden.com/dacia-sandero-1.0",
+                        "packets": [
+                            "Ambiance",
+                            "Comfort"
+                        ]
+                    },
+                    "1.0 T": {
+                        "url": "https://www.sahibinden.com/dacia-sandero-1.0-t",
+                        "packets": [
+                            "Comfort",
+                            "Essential",
+                            "Expression",
+                            "Prestige",
+                            "Stepway Comfort"
+                        ]
+                    },
+                    "1.0 T ECO-G": {
+                        "url": "https://www.sahibinden.com/dacia-sandero-1.0-t-eco-g",
+                        "packets": [
+                            "Comfort",
+                            "Stepway"
+                        ]
+                    },
+                    "1.2": {
+                        "url": "https://www.sahibinden.com/dacia-sandero-1.2",
+                        "packets": [
+                            "Ambiance",
+                            "Black Line"
+                        ]
+                    },
+                    "1.4": {
+                        "url": "https://www.sahibinden.com/dacia-sandero-1.4",
+                        "packets": [
+                            "Ambiance",
+                            "Black Line",
+                            "Laureate"
+                        ]
+                    },
+                    "1.5 BlueDCI": {
+                        "url": "https://www.sahibinden.com/dacia-sandero-1.5-bluedci",
+                        "packets": []
+                    }
+                }
+            },
+            "1310": {
+                "url": "https://www.sahibinden.com/dacia-1310",
+                "models": {}
+            },
+            "Nova": {
+                "url": "https://www.sahibinden.com/dacia-nova",
+                "models": {}
+            },
+            "Solenza": {
+                "url": "https://www.sahibinden.com/dacia-solenza",
+                "models": {}
+            }
+        }
+    },
+    "Daewoo": {
+        "url": "https://www.sahibinden.com/daewoo",
+        "series": {
+            "Chairman": {
+                "url": "https://www.sahibinden.com/daewoo-chairman",
+                "models": {}
+            },
+            "Nexia": {
+                "url": "https://www.sahibinden.com/daewoo-nexia",
+                "models": {}
+            },
+            "Nubira": {
+                "url": "https://www.sahibinden.com/daewoo-nubira",
+                "models": {
+                    "1.6": {
+                        "url": "https://www.sahibinden.com/daewoo-nubira-1.6",
+                        "packets": [
+                            "S",
+                            "SX"
+                        ]
+                    },
+                    "2.0": {
+                        "url": "https://www.sahibinden.com/daewoo-nubira-2.0",
+                        "packets": []
+                    }
+                }
+            },
+            "Espero": {
+                "url": "https://www.sahibinden.com/daewoo-espero",
+                "models": {}
+            },
+            "Lanos": {
+                "url": "https://www.sahibinden.com/daewoo-lanos",
+                "models": {
+                    "1.5": {
+                        "url": "https://www.sahibinden.com/daewoo-lanos-1.5",
+                        "packets": [
+                            "SE",
+                            "SX"
+                        ]
+                    },
+                    "1.6": {
+                        "url": "https://www.sahibinden.com/daewoo-lanos-1.6",
+                        "packets": []
+                    }
+                }
+            },
+            "Leganza": {
+                "url": "https://www.sahibinden.com/daewoo-leganza",
+                "models": {}
+            },
+            "Matiz": {
+                "url": "https://www.sahibinden.com/daewoo-matiz",
+                "models": {}
+            },
+            "Racer": {
+                "url": "https://www.sahibinden.com/daewoo-racer",
+                "models": {}
+            }
+        }
+    },
+    "Daihatsu": {
+        "url": "https://www.sahibinden.com/daihatsu",
+        "series": {
+            "Cuore": {
+                "url": "https://www.sahibinden.com/daihatsu-cuore",
+                "models": {
+                    "0.9": {
+                        "url": "https://www.sahibinden.com/daihatsu-cuore-0.9",
+                        "packets": [
+                            "CLX",
+                            "GLX"
+                        ]
+                    },
+                    "1.0": {
+                        "url": "https://www.sahibinden.com/daihatsu-cuore-1.0",
+                        "packets": [
+                            "High Grade",
+                            "Low Grade",
+                            "Thrifty"
+                        ]
+                    }
+                }
+            },
+            "Materia": {
+                "url": "https://www.sahibinden.com/daihatsu-materia",
+                "models": {}
+            },
+            "Move": {
+                "url": "https://www.sahibinden.com/daihatsu-move",
+                "models": {}
+            },
+            "Sirion": {
+                "url": "https://www.sahibinden.com/daihatsu-sirion",
+                "models": {
+                    "1.0": {
+                        "url": "https://www.sahibinden.com/daihatsu-sirion-1.0",
+                        "packets": [
+                            "1.0",
+                            "CL"
+                        ]
+                    },
+                    "1.3": {
+                        "url": "https://www.sahibinden.com/daihatsu-sirion-1.3",
+                        "packets": [
+                            "1.3",
+                            "Sporty",
+                            "Touring"
+                        ]
+                    },
+                    "1.5": {
+                        "url": "https://www.sahibinden.com/daihatsu-sirion-1.5",
+                        "packets": []
+                    }
+                }
+            },
+            "Applause": {
+                "url": "https://www.sahibinden.com/daihatsu-applause",
+                "models": {}
+            },
+            "Charade": {
+                "url": "https://www.sahibinden.com/daihatsu-charade",
+                "models": {
+                    "1.3": {
+                        "url": "https://www.sahibinden.com/daihatsu-charade-1.3",
+                        "packets": []
+                    },
+                    "1.5": {
+                        "url": "https://www.sahibinden.com/daihatsu-charade-1.5",
+                        "packets": []
+                    }
+                }
+            },
+            "Copen": {
+                "url": "https://www.sahibinden.com/daihatsu-copen",
+                "models": {}
+            },
+            "YRV": {
+                "url": "https://www.sahibinden.com/daihatsu-yrv",
+                "models": {}
+            }
+        }
+    },
+    "Dodge": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge",
+        "series": {
+            "Durango": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-durango",
+                "models": {
+                    "3.6L": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-durango-3.6l",
+                        "packets": []
+                    },
+                    "5.9L": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-durango-5.9l",
+                        "packets": []
+                    }
+                }
+            },
+            "Journey": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-journey",
+                "models": {}
+            },
+            "Ram": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-ram",
+                "models": {
+                    "3.0": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-ram-3.0",
+                        "packets": []
+                    },
+                    "3.0 Diesel": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-ram-3.0-diesel",
+                        "packets": []
+                    },
+                    "5.2": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-ram-5.2",
+                        "packets": []
+                    },
+                    "5.9": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-ram-5.9",
+                        "packets": []
+                    },
+                    "6.2": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-ram-6.2",
+                        "packets": []
+                    },
+                    "8.3": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-ram-8.3",
+                        "packets": []
+                    }
+                }
+            },
+            "Caliber": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-caliber",
+                "models": {
+                    "1.8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-caliber-1.8",
+                        "packets": []
+                    },
+                    "2.0": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-caliber-2.0",
+                        "packets": [
+                            "CRD",
+                            "SXT"
+                        ]
+                    }
+                }
+            },
+            "Nitro": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-dodge-nitro",
+                "models": {}
+            }
+        }
+    },
+    "DS Automobiles": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-ds-automobiles",
+        "series": {
+            "DS 3 Crossback": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ds-automobiles-ds-3-crossback",
+                "models": {
+                    "1.2 PureTech": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ds-automobiles-ds-3-crossback-1.2-puretech",
+                        "packets": [
+                            "Performance Line",
+                            "So Chic"
+                        ]
+                    },
+                    "1.5 BlueHDI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ds-automobiles-ds-3-crossback-1.5-bluehdi",
+                        "packets": []
+                    }
+                }
+            },
+            "DS 7 Crossback": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ds-automobiles-ds-7-crossback",
+                "models": {
+                    "1.5 BlueHDI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ds-automobiles-ds-7-crossback-1.5-bluehdi",
+                        "packets": [
+                            "Antoine de Saint Exupery",
+                            "Esprit de Voyage",
+                            "Etoile",
+                            "Opera",
+                            "Performance Line",
+                            "Rivoli"
+                        ]
+                    },
+                    "1.6 Hybrid": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ds-automobiles-ds-7-crossback-1.6-hybrid",
+                        "packets": [
+                            "Esprit de Voyage",
+                            "Etoile",
+                            "Grand Chic Opera",
+                            "Opera",
+                            "Rivoli"
+                        ]
+                    },
+                    "1.6 Puretech": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ds-automobiles-ds-7-crossback-1.6-puretech",
+                        "packets": [
+                            "Grand Chic Opera",
+                            "Louvre",
+                            "Opera",
+                            "Performance Line",
+                            "Rivoli",
+                            "So Chic",
+                            "So Chic Opera"
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    "Eagle": {
+        "url": "https://www.sahibinden.com/eagle",
+        "series": {}
+    },
+    "Ferrari": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-ferrari",
+        "series": {}
+    },
+    "Bentley": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-bentley",
+        "series": {}
+    },
+    "BMW": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw",
+        "series": {
+            "iX": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix",
+                "models": {
+                    "M60": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix-m60",
+                        "packets": []
+                    },
+                    "xDrive40": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix-xdrive40",
+                        "packets": [
+                            "First Edition Essence",
+                            "First Edition Sport"
+                        ]
+                    },
+                    "xDrive50": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix-xdrive50",
+                        "packets": []
+                    },
+                    "xDrive60": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix-xdrive60",
+                        "packets": []
+                    }
+                }
+            },
+            "iX1": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix1",
+                "models": {
+                    "eDrive20": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix1-edrive20",
+                        "packets": [
+                            "M Sport",
+                            "Sport Line",
+                            "X Line"
+                        ]
+                    },
+                    "xDrive30": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix1-xdrive30",
+                        "packets": [
+                            "M Sport",
+                            "X Line"
+                        ]
+                    }
+                }
+            },
+            "iX2": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix2",
+                "models": {}
+            },
+            "iX3": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix3",
+                "models": {
+                    "eDrive20": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix3-edrive20",
+                        "packets": []
+                    },
+                    "eDrive30": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix3-edrive30",
+                        "packets": []
+                    },
+                    "Impressive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-ix3-impressive",
+                        "packets": []
+                    }
+                }
+            },
+            "X1": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1",
+                "models": {
+                    "16d sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1-16d-sdrive",
+                        "packets": [
+                            "16d sDrive",
+                            "M Sport",
+                            "Premium Line",
+                            "Ultimate Edition M Sport",
+                            "Ultimate Edition X-Line",
+                            "X Line"
+                        ]
+                    },
+                    "16i sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1-16i-sdrive",
+                        "packets": [
+                            "16i sDrive",
+                            "Comfort",
+                            "Luxury",
+                            "M Sport",
+                            "Sport Line",
+                            "X Line"
+                        ]
+                    },
+                    "18i sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1-18i-sdrive",
+                        "packets": [
+                            "18i sDrive",
+                            "Joy",
+                            "M Sport",
+                            "Premium Line",
+                            "Prestige",
+                            "Sport Line",
+                            "Ultimate Edition M Sport"
+                        ]
+                    },
+                    "20d sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1-20d-sdrive",
+                        "packets": [
+                            "2.0d sDrive",
+                            "Comfort",
+                            "M Sport"
+                        ]
+                    },
+                    "20d xDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1-20d-xdrive",
+                        "packets": [
+                            "2.0d xDrive",
+                            "Comfort",
+                            "M Sport",
+                            "Premium",
+                            "X Line"
+                        ]
+                    },
+                    "20i sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1-20i-sdrive",
+                        "packets": [
+                            "M Sport",
+                            "Standart",
+                            "X Line"
+                        ]
+                    },
+                    "23d xDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1-23d-xdrive",
+                        "packets": []
+                    },
+                    "xDrive25e": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x1-xdrive25e",
+                        "packets": [
+                            "M Sport",
+                            "X Line"
+                        ]
+                    }
+                }
+            },
+            "X2": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x2",
+                "models": {
+                    "16d sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x2-16d-sdrive",
+                        "packets": [
+                            "Edition M Mesh",
+                            "M Sport",
+                            "M Sport X",
+                            "Special Edition M Sport",
+                            "Special Edition M Sport X"
+                        ]
+                    },
+                    "18i sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x2-18i-sdrive",
+                        "packets": [
+                            "M Sport",
+                            "M Sport X",
+                            "Premium Line",
+                            "Special Edition M Sport",
+                            "Special Edition M Sport X"
+                        ]
+                    },
+                    "20d xDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x2-20d-xdrive",
+                        "packets": [
+                            "M Sport",
+                            "M Sport X"
+                        ]
+                    },
+                    "20i sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x2-20i-sdrive",
+                        "packets": []
+                    },
+                    "M35i xDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x2-m35i-xdrive",
+                        "packets": [
+                            "M Sport",
+                            "Standart"
+                        ]
+                    }
+                }
+            },
+            "X3": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3",
+                "models": {
+                    "20": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3-20",
+                        "packets": []
+                    },
+                    "20d": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3-20d",
+                        "packets": [
+                            "20d",
+                            "Premium"
+                        ]
+                    },
+                    "20d xDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3-20d-xdrive",
+                        "packets": [
+                            "2.0d xDrive",
+                            "Comfort",
+                            "Exclusive",
+                            "Luxury Line",
+                            "M Plus",
+                            "M Sport",
+                            "Premium",
+                            "Prestige"
+                        ]
+                    },
+                    "20i sDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3-20i-sdrive",
+                        "packets": [
+                            "20i sDrive",
+                            "Exclusive",
+                            "First Edition Luxury",
+                            "First Edition M",
+                            "First Edition X",
+                            "Luxury Line",
+                            "M Plus"
+                        ]
+                    },
+                    "25i": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3-25i",
+                        "packets": []
+                    },
+                    "30": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3-30",
+                        "packets": []
+                    },
+                    "30d": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3-30d",
+                        "packets": []
+                    },
+                    "30i xDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x3-30i-xdrive",
+                        "packets": []
+                    }
+                }
+            },
+            "X4": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x4",
+                "models": {
+                    "20d xDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x4-20d-xdrive",
+                        "packets": [
+                            "Exclusive",
+                            "M Sport",
+                            "Standart",
+                            "xLine"
+                        ]
+                    },
+                    "M40i xDrive": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-bmw-x4-m40i-xdrive",
+                        "packets": []
+                    }
+                }
+            }
+        }
+    },
+    "BYD": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-byd",
+        "series": {
+            "Atto 3 EV": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-byd-atto-3-ev",
+                "models": {}
+            },
+            "Seal U": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-byd-seal-u",
+                "models": {}
+            },
+            "Seal U EV": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-byd-seal-u-ev",
+                "models": {}
+            },
+            "Tang": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-byd-tang",
+                "models": {}
+            }
+        }
+    },
+    "Cadillac": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-cadillac",
+        "series": {
+            "Escalade": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-cadillac-escalade",
+                "models": {
+                    "6.0 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-cadillac-escalade-6.0-v8",
+                        "packets": []
+                    },
+                    "6.0 V8 Hybrid": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-cadillac-escalade-6.0-v8-hybrid",
+                        "packets": []
+                    },
+                    "6.2 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-cadillac-escalade-6.2-v8",
+                        "packets": []
+                    }
+                }
+            },
+            "SRX": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-cadillac-srx",
+                "models": {
+                    "3.6 V6": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-cadillac-srx-3.6-v6",
+                        "packets": []
+                    },
+                    "4.6 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-cadillac-srx-4.6-v8",
+                        "packets": []
+                    }
+                }
+            }
+        }
+    },
+    "Chery": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-chery",
+        "series": {
+            "Omoda 5": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-omoda-5",
+                "models": {}
+            },
+            "Omoda 5 Pro": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-omoda-5-pro",
+                "models": {}
+            },
+            "Tiggo 3": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-tiggo-3",
+                "models": {
+                    "1.6": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-tiggo-3-1.6",
+                        "packets": [
+                            "Acteco Forza",
+                            "Acteco Lusso",
+                            "Lusso Supercharger"
+                        ]
+                    },
+                    "2.0": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-tiggo-3-2.0",
+                        "packets": []
+                    }
+                }
+            },
+            "Tiggo 7 Pro": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-tiggo-7-pro",
+                "models": {}
+            },
+            "Tiggo 7 Pro Max": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-tiggo-7-pro-max",
+                "models": {}
+            },
+            "Tiggo 8 Pro": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-tiggo-8-pro",
+                "models": {}
+            },
+            "Tiggo 8 Pro Max": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-chery-tiggo-8-pro-max",
+                "models": {}
+            }
+        }
+    },
+    "Fiat": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat",
+        "series": {
+            "Egea Cross": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-egea-cross",
+                "models": {
+                    "1.0 Firefly": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-egea-cross-1.0-firefly",
+                        "packets": [
+                            "Lounge",
+                            "Urban",
+                            "Wagon Lounge"
+                        ]
+                    },
+                    "1.3 Multijet": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-egea-cross-1.3-multijet",
+                        "packets": [
+                            "Street",
+                            "Urban"
+                        ]
+                    },
+                    "1.4 Fire": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-egea-cross-1.4-fire",
+                        "packets": [
+                            "Limited",
+                            "Lounge",
+                            "Street",
+                            "Street Plus",
+                            "Urban"
+                        ]
+                    },
+                    "1.5 T4 Hibrit": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-egea-cross-1.5-t4-hibrit",
+                        "packets": [
+                            "Limited",
+                            "Lounge",
+                            "Street",
+                            "Urban",
+                            "Wagon Lounge",
+                            "Wagon Urban"
+                        ]
+                    },
+                    "1.6 Multijet": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-egea-cross-1.6-multijet",
+                        "packets": [
+                            "Limited",
+                            "Lounge",
+                            "Lounge Plus",
+                            "Street",
+                            "Street Plus",
+                            "Urban",
+                            "Urban Plus",
+                            "Wagon Lounge"
+                        ]
+                    }
+                }
+            },
+            "Freemont": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-freemont",
+                "models": {}
+            },
+            "Fullback": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-fullback",
+                "models": {}
+            },
+            "Sedici": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-sedici",
+                "models": {}
+            },
+            "500 X": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-500-x",
+                "models": {
+                    "1.0": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-500-x-1.0",
+                        "packets": []
+                    },
+                    "1.3": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-500-x-1.3",
+                        "packets": [
+                            "Cross",
+                            "Cross Plus",
+                            "Soft Top",
+                            "Sport"
+                        ]
+                    },
+                    "1.3 Multijet": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-500-x-1.3-multijet",
+                        "packets": [
+                            "Cross",
+                            "Pop Plus"
+                        ]
+                    },
+                    "1.4 T": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-500-x-1.4-t",
+                        "packets": [
+                            "Cross",
+                            "Cross Plus",
+                            "PopStar"
+                        ]
+                    },
+                    "1.5 T4 Hibrit": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-500-x-1.5-t4-hibrit",
+                        "packets": [
+                            "Cross Plus",
+                            "Soft Top"
+                        ]
+                    },
+                    "1.6": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-500-x-1.6",
+                        "packets": [
+                            "Pop",
+                            "Pop Plus"
+                        ]
+                    },
+                    "1.6 Mjet": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-500-x-1.6-mjet",
+                        "packets": [
+                            "City Cross",
+                            "Cross",
+                            "Cross Plus",
+                            "Popstar"
+                        ]
+                    }
+                }
+            },
+            "600": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-600",
+                "models": {}
+            },
+            "600e": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-fiat-600e",
+                "models": {}
+            }
+        }
+    },
+    "Ford": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford",
+        "series": {
+            "Bronco Sport": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-bronco-sport",
+                "models": {}
+            },
+            "EcoSport": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-ecosport",
+                "models": {
+                    "1.0 EcoBoost": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-ecosport-1.0-ecoboost",
+                        "packets": [
+                            "ST Line",
+                            "Style"
+                        ]
+                    },
+                    "1.5 TDCI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-ecosport-1.5-tdci",
+                        "packets": []
+                    }
+                }
+            },
+            "Edge": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-edge",
+                "models": {
+                    "2.0 EcoBoost": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-edge-2.0-ecoboost",
+                        "packets": []
+                    },
+                    "2.0 TDCi": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-edge-2.0-tdci",
+                        "packets": []
+                    }
+                }
+            },
+            "Expedition": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-expedition",
+                "models": {
+                    "3.5": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-expedition-3.5",
+                        "packets": []
+                    },
+                    "5.4 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-expedition-5.4-v8",
+                        "packets": []
+                    }
+                }
+            },
+            "Explorer": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-explorer",
+                "models": {
+                    "3.5": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-explorer-3.5",
+                        "packets": []
+                    },
+                    "4.0": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-explorer-4.0",
+                        "packets": []
+                    },
+                    "4.0 XLT": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-explorer-4.0-xlt",
+                        "packets": []
+                    },
+                    "5.0 Limited": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-explorer-5.0-limited",
+                        "packets": []
+                    }
+                }
+            },
+            "F": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-f",
+                "models": {
+                    "150": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-f-150",
+                        "packets": []
+                    },
+                    "250": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-f-250",
+                        "packets": []
+                    },
+                    "350": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-f-350",
+                        "packets": []
+                    }
+                }
+            },
+            "Flex": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-flex",
+                "models": {}
+            },
+            "Kuga": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-kuga",
+                "models": {
+                    "1.5 TDCI": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-kuga-1.5-tdci",
+                        "packets": [
+                            "ST Line",
+                            "Style",
+                            "Titanium",
+                            "Vignale"
+                        ]
+                    },
+                    "1.5 EcoBlue": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-kuga-1.5-ecoblue",
+                        "packets": [
+                            "ST Line",
+                            "Style",
+                            "Titanium",
+                            "Vignale"
+                        ]
+                    },
+                    "1.5 EcoBoost": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-kuga-1.5-ecoboost",
+                        "packets": [
+                            "ST-Line",
+                            "ST-Line Black Package",
+                            "ST-Line X",
+                            "Selective",
+                            "Style",
+                            "Titanium",
+                            "Trend X"
+                        ]
+                    },
+                    "1.6 EcoBoost": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-kuga-1.6-ecoboost",
+                        "packets": [
+                            "Selective",
+                            "Titanium",
+                            "Trend X"
+                        ]
+                    },
+                    "2.0 TDCi": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-kuga-2.0-tdci",
+                        "packets": [
+                            "Selective",
+                            "Titanium"
+                        ]
+                    },
+                    "2.5 Duratec": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-ford-kuga-2.5-duratec",
+                        "packets": []
+                    }
+                }
+            }
+        }
+    },
+    "Forthing": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-forthing",
+        "series": {
+            "M4 U-Tour": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-forthing-m4-u-tour",
+                "models": {}
+            },
+            "T5 Evo": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-forthing-t5-evo",
+                "models": {}
+            }
+        }
+    },
+    "Foton": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-foton",
+        "series": {
+            "Tunland G7": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-foton-tunland-g7",
+                "models": {}
+            },
+            "Tunland V9": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-foton-tunland-v9",
+                "models": {}
+            }
+        }
+    },
+    "GMC": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc",
+        "series": {
+            "Canyon": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-canyon",
+                "models": {}
+            },
+            "Hummer": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-hummer",
+                "models": {}
+            },
+            "Jimmy": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-jimmy",
+                "models": {}
+            },
+            "Sierra": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-sierra",
+                "models": {
+                    "2.7 L": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-sierra-2.7-l",
+                        "packets": []
+                    },
+                    "3.0 L": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-sierra-3.0-l",
+                        "packets": []
+                    },
+                    "5.7 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-sierra-5.7-v8",
+                        "packets": []
+                    },
+                    "6.2 L": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-sierra-6.2-l",
+                        "packets": []
+                    }
+                }
+            },
+            "Terrain": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-terrain",
+                "models": {}
+            },
+            "Typhoon": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-typhoon",
+                "models": {}
+            },
+            "Yukon": {
+                "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-yukon",
+                "models": {
+                    "5.3 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-yukon-5.3-v8",
+                        "packets": []
+                    },
+                    "Denali 6.2 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-yukon-denali-6.2-v8",
+                        "packets": []
+                    },
+                    "Vortec 5.3 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-yukon-vortec-5.3-v8",
+                        "packets": []
+                    },
+                    "Vortec 5.7 V8": {
+                        "url": "https://www.sahibinden.com/arazi-suv-pickup-gmc-yukon-vortec-5.7-v8",
+                        "packets": []
+                    }
+                }
+            }
+        }
+    },
+    "Elektrikli Otomobil": {
+        "url": "https://www.sahibinden.com/otomobil/elektrikli",
+        "series": {}
+    },
+    "Elektrikli SUV & Pickup": {
+        "url": "https://www.sahibinden.com/arazi-suv-pickup/elektrikli",
+        "series": {}
+    },
+    "Elektrikli Minivan & Panelvan": {
+        "url": "https://www.sahibinden.com/minivan-panelvan/elektrikli",
+        "series": {}
+    },
+    "Elektrikli Motosiklet": {
+        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet",
+        "series": {
+            "Akeso": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-akeso",
+                "models": {
+                    "L 500": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-akeso-l-500",
+                        "packets": []
+                    },
+                    "Lily": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-akeso-lily",
+                        "packets": []
+                    },
+                    "Lotus": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-akeso-lotus",
+                        "packets": []
+                    },
+                    "Nanny": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-akeso-nanny",
+                        "packets": []
+                    },
+                    "T-06": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-akeso-t-06",
+                        "packets": []
+                    },
+                    "Yagi": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-akeso-yagi",
+                        "packets": []
+                    }
+                }
+            },
+            "Altai": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-altai",
+                "models": {
+                    "E-Lay Kabinli": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-altai-e-lay-kabinli",
+                        "packets": []
+                    },
+                    "E-Malta": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-altai-e-malta",
+                        "packets": []
+                    },
+                    "E-Stella": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-altai-e-stella",
+                        "packets": []
+                    }
+                }
+            },
+            "Altemur": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-altemur",
+                "models": {
+                    "T-14": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-altemur-t-14",
+                        "packets": []
+                    },
+                    "Zuma 18": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-altemur-zuma-18",
+                        "packets": []
+                    }
+                }
+            },
+            "Apachi": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi",
+                "models": {
+                    "Arsen": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi-arsen",
+                        "packets": []
+                    },
+                    "Atlas 45000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi-atlas-45000",
+                        "packets": []
+                    },
+                    "Doru": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi-doru",
+                        "packets": []
+                    },
+                    "EVO": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi-evo",
+                        "packets": []
+                    },
+                    "Moneta 7500": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi-moneta-7500",
+                        "packets": []
+                    },
+                    "Parla": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi-parla",
+                        "packets": []
+                    },
+                    "Q5": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi-q5",
+                        "packets": []
+                    },
+                    "Sun": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apachi-sun",
+                        "packets": []
+                    }
+                }
+            },
+            "Apec": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apec",
+                "models": {
+                    "APM2": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apec-apm2",
+                        "packets": []
+                    },
+                    "APM5": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apec-apm5",
+                        "packets": []
+                    },
+                    "APS2": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apec-aps2",
+                        "packets": []
+                    },
+                    "APT4": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-apec-apt4",
+                        "packets": []
+                    }
+                }
+            },
+            "Arnica": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arnica",
+                "models": {
+                    "ARN 8200": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arnica-arn-8200",
+                        "packets": []
+                    },
+                    "ARN 9900": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arnica-arn-9900",
+                        "packets": []
+                    },
+                    "Aspendos": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arnica-aspendos",
+                        "packets": []
+                    },
+                    "Gezgin 5500": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arnica-gezgin-5500",
+                        "packets": []
+                    }
+                }
+            },
+            "Arora": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora",
+                "models": {
+                    "Angel Pro": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-angel-pro",
+                        "packets": []
+                    },
+                    "Anka 8000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-anka-8000",
+                        "packets": []
+                    },
+                    "AR01": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-ar01",
+                        "packets": []
+                    },
+                    "AR 1000 Moped": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-ar-1000-moped",
+                        "packets": []
+                    },
+                    "AR 5000 Moped": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-ar-5000-moped",
+                        "packets": []
+                    },
+                    "AR 7000 Herkül": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-ar-7000-herkul",
+                        "packets": []
+                    },
+                    "AR 10000 Moped": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-ar-10000-moped",
+                        "packets": []
+                    },
+                    "Felix Plus": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-felix-plus",
+                        "packets": []
+                    },
+                    "Felix Pro": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-felix-pro",
+                        "packets": []
+                    },
+                    "Golf 01": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-golf-01",
+                        "packets": []
+                    },
+                    "Kaplan": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-kaplan",
+                        "packets": []
+                    },
+                    "Mini Cargo": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-mini-cargo",
+                        "packets": []
+                    },
+                    "Navara New": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-navara-new",
+                        "packets": []
+                    },
+                    "Polo Plus": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-polo-plus",
+                        "packets": []
+                    },
+                    "Rüzgar Pro": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-ruzgar-pro",
+                        "packets": []
+                    },
+                    "TDL 25Z Derya": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-arora-tdl-25z-derya",
+                        "packets": []
+                    }
+                }
+            },
+            "Askoll": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-askoll",
+                "models": {
+                    "eS3 Evolution": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-askoll-es3-evolution",
+                        "packets": []
+                    },
+                    "eSpro 70": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-askoll-espro-70",
+                        "packets": []
+                    },
+                    "NGS2": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-askoll-ngs2",
+                        "packets": []
+                    },
+                    "NGS3": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-askoll-ngs3",
+                        "packets": []
+                    },
+                    "XKP 70": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-askoll-xkp-70",
+                        "packets": []
+                    }
+                }
+            },
+            "Doohan": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-doohan",
+                "models": {}
+            },
+            "Ecooter": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-ecooter",
+                "models": {
+                    "E3S": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-ecooter-e3s",
+                        "packets": []
+                    },
+                    "E3S+": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-ecooter-e3s-plus",
+                        "packets": []
+                    },
+                    "E5": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-ecooter-e5",
+                        "packets": []
+                    }
+                }
+            },
+            "Enbo": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-enbo",
+                "models": {}
+            },
+            "Evoke": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-evoke",
+                "models": {}
+            },
+            "Falcon": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon",
+                "models": {
+                    "Electra 6500": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-electra-6500",
+                        "packets": []
+                    },
+                    "Energy 5000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-energy-5000",
+                        "packets": []
+                    },
+                    "Enjoy Plus 200": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-enjoy-plus-200",
+                        "packets": []
+                    },
+                    "Famigo 10000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-famigo-10000",
+                        "packets": []
+                    },
+                    "Family 8000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-family-8000",
+                        "packets": []
+                    },
+                    "Frida 7000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-frida-7000",
+                        "packets": []
+                    },
+                    "GYPSY 249": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-gypsy-249",
+                        "packets": []
+                    },
+                    "Handy 249": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-handy-249",
+                        "packets": []
+                    },
+                    "Service 1500": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-service-1500",
+                        "packets": []
+                    },
+                    "Service 6000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-service-6000",
+                        "packets": []
+                    },
+                    "Yuwi G10": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-falcon-yuwi-g10",
+                        "packets": []
+                    }
+                }
+            },
+            "FCM": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-fcm",
+                "models": {
+                    "Jett": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-fcm-jett",
+                        "packets": []
+                    },
+                    "Nova X": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-fcm-nova-x",
+                        "packets": []
+                    },
+                    "Titan 66000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-fcm-titan-66000",
+                        "packets": []
+                    },
+                    "Titan 66000 Max": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-fcm-titan-66000-max",
+                        "packets": []
+                    },
+                    "Trago": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-fcm-trago",
+                        "packets": []
+                    },
+                    "Twingo": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-fcm-twingo",
+                        "packets": []
+                    }
+                }
+            },
+            "Forche": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-forche",
+                "models": {
+                    "FR5": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-forche-fr5",
+                        "packets": []
+                    },
+                    "Kargo 300": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-forche-kargo-300",
+                        "packets": []
+                    }
+                }
+            },
+            "Galaxy": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-motosiklet-galaxy",
+                "models": {}
+            }
+        }
+    },
+    "Elektrikli ATV": {
+        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv",
+        "series": {
+            "Kral Motor": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-kral-motor",
+                "models": {}
+            },
+            "Kuba": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-kuba",
+                "models": {}
+            },
+            "Motolux": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-motolux",
+                "models": {}
+            },
+            "Rine": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-rine",
+                "models": {
+                    "Billy 2000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-rine-billy-2000",
+                        "packets": []
+                    },
+                    "Monster": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-rine-monster",
+                        "packets": []
+                    }
+                }
+            },
+            "Yuki": {
+                "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-yuki",
+                "models": {
+                    "Afacan": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-yuki-afacan",
+                        "packets": []
+                    },
+                    "Echo 4000": {
+                        "url": "https://www.sahibinden.com/elektrikli-araclar-elektrikli-atv-yuki-echo-4000",
+                        "packets": []
+                    }
+                }
+            }
+        }
+    }
+}
