@@ -2,15 +2,15 @@
 
 # Phase 1: Install system packages
 [phases.setup]
-# Add Google Chrome's official repository before trying to install from it.
-# This is necessary because Chrome is not in the default Ubuntu sources.
+# Use the modern, recommended method for adding the Google Chrome repository
 cmds = [
-  "wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -",
-  "sudo sh -c 'echo \"deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main\" >> /etc/apt/sources.list.d/google-chrome.list'"
+  "wget -q -O /tmp/google_signing_key.pub https://dl.google.com/linux/linux_signing_key.pub",
+  "sudo gpg --no-default-keyring --keyring /etc/apt/keyrings/google-chrome.gpg --import /tmp/google_signing_key.pub",
+  "echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main' | sudo tee /etc/apt/sources.list.d/google-chrome.list"
 ]
-# Install Chrome, the virtual display, and other necessary modern dependencies
+# Install Chrome, the virtual display, and corrected modern dependencies
 aptPkgs = [
-  "libasound2",
+  "libasound2t64", # Corrected package name
   "libatk1.0-0",
   "libcairo2",
   "libcups2",
