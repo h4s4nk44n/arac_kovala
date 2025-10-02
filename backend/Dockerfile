@@ -34,10 +34,7 @@ RUN pip install --upgrade pip setuptools wheel && \
 # Copy the backend app
 COPY . /app
 
-# Use non-root user to avoid Chrome sandbox issues
-RUN useradd -m appuser && \
-    chown -R appuser:appuser /app
-USER appuser
+# Run as root; Chrome will use --no-sandbox via app config
 
 # Start the Gunicorn server; Railway will pass $PORT
 CMD ["bash", "-lc", "exec gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]
