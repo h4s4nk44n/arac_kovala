@@ -250,7 +250,7 @@ def _save_data_to_disk():
 def _ensure_driver():
     global DRIVER
     if DRIVER is None:
-        headless_env = os.environ.get("HEADLESS", "1")
+        headless_env = os.environ.get("HEADLESS", "0")
         run_headless = headless_env not in ("0", "false", "False", "")
 
         print(f"Starting Selenium driver... headless={run_headless}")
