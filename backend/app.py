@@ -252,13 +252,11 @@ def _ensure_driver():
     if DRIVER is None:
         headless_env = os.environ.get("HEADLESS", "1")
         run_headless = headless_env not in ("0", "false", "False", "")
-        xvfb_enabled = not run_headless
 
-        print(f"Starting Selenium driver... headless={run_headless} xvfb={xvfb_enabled}")
+        print(f"Starting Selenium driver... headless={run_headless}")
         DRIVER = Driver(
             uc=True,
             headless=run_headless,
-            xvfb=xvfb_enabled,
             no_sandbox=True,
             disable_gpu=True,
         )
