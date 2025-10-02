@@ -26,7 +26,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiBase": "http://10.144.180.90:8080",
+      "apiBase": "https://arackovala-production.up.railway.app",
       "eas": {
         "projectId": "7db31db4-91d2-4ca5-ab01-b02c50fa56a2"
       }

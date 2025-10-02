@@ -6,7 +6,7 @@ let cachedBaseUrl;
 
 function computeCandidates() {
   const candidates = [];
-  const fromEnv = process.env.EXPO_PUBLIC_API_BASE || Constants?.expoConfig?.extra?.apiBase;
+  const fromEnv = (process.env.EXPO_PUBLIC_API_BASE || Constants?.expoConfig?.extra?.apiBase || '').replace(/\/$/, '');
   if (fromEnv) candidates.push(fromEnv);
 
   const expo = Constants?.expoConfig || Constants?.manifest2?.extra?.expoClient;
