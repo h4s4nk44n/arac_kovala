@@ -1,5 +1,5 @@
 seleniumbase
 Flask
-flask_cors
+Flask-Cors
 requests
 gunicorn
