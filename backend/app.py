@@ -246,15 +246,17 @@ def _save_data_to_disk():
 def _ensure_driver():
     global DRIVER
     if DRIVER is None:
-        print("Starting Selenium driver with virtual display (Xvfb) for server...")
-        # On a server, run in normal mode but direct the display to a virtual screen.
-        # This is the most reliable way to handle websites that block headless browsers.
+        headless_env = os.environ.get("HEADLESS", "1")
+        run_headless = headless_env not in ("0", "false", "False", "")
+        xvfb_enabled = not run_headless
+
+        print(f"Starting Selenium driver... headless={run_headless} xvfb={xvfb_enabled}")
         DRIVER = Driver(
             uc=True,
-            headless=False, # Must be False when using Xvfb
-            xvfb=True,      # This enables the virtual display
+            headless=run_headless,
+            xvfb=xvfb_enabled,
             no_sandbox=True,
-            disable_gpu=True
+            disable_gpu=True,
         )
         DRIVER.set_window_size(1920, 1080)
     return DRIVER
