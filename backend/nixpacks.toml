@@ -16,9 +16,13 @@ cmds = [
   "sudo apt-get install -y google-chrome-stable"
 ]
 
-# Phase 2: Explicitly override the default Python installer to prevent the "Text file busy" race condition
-[providers.python]
+# --- FIX ---
+# Phase 2: Explicitly override the default Python installer to prevent "Text file busy" error
+# The syntax [[providers]] denotes an array of tables, which is what Nixpacks expects.
+[[providers]]
+name = "python"
 installCmd = "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && sleep 1 && pip install -r requirements.txt"
+
 
 # Phase 3: Define the command to start the web server
 # This will be used if a Procfile is not found. It's good to have as a fallback.
