@@ -207,6 +207,19 @@ FILTERS = {}
 POSTS = {}
 KNOWN_IDS = {}
 
+# Ensure background services start when running under WSGI (e.g., Gunicorn)
+_BOOTSTRAPPED = False
+_BOOTSTRAP_LOCK = threading.Lock()
+
+@app.before_first_request
+def _ensure_bootstrap_started():
+    global _BOOTSTRAPPED
+    if not _BOOTSTRAPPED:
+        with _BOOTSTRAP_LOCK:
+            if not _BOOTSTRAPPED:
+                _bootstrap()
+                _BOOTSTRAPPED = True
+
 def _load_data_from_disk():
     global FILTERS, POSTS, KNOWN_IDS
     if os.path.exists(FILTERS_FILE):
