@@ -207,18 +207,9 @@ FILTERS = {}
 POSTS = {}
 KNOWN_IDS = {}
 
-# Ensure background services start when running under WSGI (e.g., Gunicorn)
+# Bootstrap state for starting background workers exactly once
 _BOOTSTRAPPED = False
 _BOOTSTRAP_LOCK = threading.Lock()
-
-@app.before_first_request
-def _ensure_bootstrap_started():
-    global _BOOTSTRAPPED
-    if not _BOOTSTRAPPED:
-        with _BOOTSTRAP_LOCK:
-            if not _BOOTSTRAPPED:
-                _bootstrap()
-                _BOOTSTRAPPED = True
 
 def _load_data_from_disk():
     global FILTERS, POSTS, KNOWN_IDS
@@ -441,8 +432,20 @@ def register_push_token():
     return jsonify({"error": "Invalid token provided."}), 400
 
 def _bootstrap():
-    _load_data_from_disk()
-    _start_scraper_thread()
+    global _BOOTSTRAPPED
+    with _BOOTSTRAP_LOCK:
+        if _BOOTSTRAPPED:
+            return
+        _load_data_from_disk()
+        _start_scraper_thread()
+        _BOOTSTRAPPED = True
+
+# When imported by Gunicorn (not __main__), bootstrap on import
+if __name__ != "__main__":
+    try:
+        _bootstrap()
+    except Exception as e:
+        print(f"Bootstrap on import failed: {e}")
 
 if __name__ == "__main__":
     print("--- Initializing Scraper and Driver (this may take a moment) ---")
