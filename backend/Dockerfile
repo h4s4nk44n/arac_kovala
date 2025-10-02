@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8080
 
-# Install Chromium (avoids Google apt signing issues) + common runtime deps
+# Install Chromium, Xvfb, and all dependencies including the missing xauth package
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 \
     libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
     libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 \
-    libgbm1 libxshmfence1 xdg-utils wget ca-certificates xvfb && \
+    libgbm1 libxshmfence1 xdg-utils wget ca-certificates xvfb xauth && \
     rm -rf /var/lib/apt/lists/*
 
 # Tell Selenium/SeleniumBase to use Chromium (binary path for Debian bookworm)
@@ -38,5 +38,3 @@ COPY . /app
 
 # Start the Gunicorn server; Railway will pass $PORT
 CMD ["bash", "-lc", "exec xvfb-run -a -s '-screen 0 1920x1080x24' gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]
-
-
