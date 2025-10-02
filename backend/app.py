@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 import mimetypes
 from urllib.parse import urlsplit
+import sys # Import sys to check the operating system
 
 import requests
 
@@ -207,10 +208,6 @@ FILTERS = {}
 POSTS = {}
 KNOWN_IDS = {}
 
-# Bootstrap state for starting background workers exactly once
-_BOOTSTRAPPED = False
-_BOOTSTRAP_LOCK = threading.Lock()
-
 def _load_data_from_disk():
     global FILTERS, POSTS, KNOWN_IDS
     if os.path.exists(FILTERS_FILE):
@@ -246,10 +243,12 @@ def _save_data_to_disk():
         except Exception as e:
             print(f"Failed to write data to disk: {e}")
 
-# --- MODIFIED FOR SERVER DEPLOYMENT ---
+# --- MODIFIED FOR DOCKER DEPLOYMENT ---
 def _ensure_driver():
     global DRIVER
     if DRIVER is None:
+        # The Dockerfile handles Xvfb. We just need to run non-headless.
+        # The HEADLESS env var is set in the Dockerfile, but we can default to non-headless.
         headless_env = os.environ.get("HEADLESS", "0")
         run_headless = headless_env not in ("0", "false", "False", "")
 
@@ -257,8 +256,8 @@ def _ensure_driver():
         DRIVER = Driver(
             uc=True,
             headless=run_headless,
-            no_sandbox=True,
-            disable_gpu=True,
+            no_sandbox=True, # Important for running as root in Docker
+            disable_gpu=True
         )
         DRIVER.set_window_size(1920, 1080)
     return DRIVER
@@ -342,11 +341,6 @@ def health(): return jsonify({"status": "ok"})
 @app.get('/')
 def root(): return jsonify({
     "message": "Sahibinden tracker API", "status": "ok",
-    "endpoints": [
-        "/health", "GET /filters", "POST /filters", "PUT /filters/<id>",
-        "DELETE /filters/<id>", "GET /filters/<id>/cars", "GET /feed",
-        "GET /images/<filename>", "POST /register-push-token",
-    ],
 })
 
 @app.get('/filters')
@@ -429,30 +423,31 @@ def register_push_token():
         return jsonify({"status": "ok"})
     return jsonify({"error": "Invalid token provided."}), 400
 
-def _bootstrap():
+# --- MODIFIED: Use a single bootstrap function ---
+def bootstrap():
+    """Load data and start background threads. Safe to call multiple times."""
     global _BOOTSTRAPPED
     with _BOOTSTRAP_LOCK:
         if _BOOTSTRAPPED:
             return
+        print("--- Bootstrapping Application ---")
         _load_data_from_disk()
         _start_scraper_thread()
         _BOOTSTRAPPED = True
 
-# When imported by Gunicorn (not __main__), bootstrap on import
-if __name__ != "__main__":
-    try:
-        _bootstrap()
-    except Exception as e:
-        print(f"Bootstrap on import failed: {e}")
+_BOOTSTRAPPED = False
+_BOOTSTRAP_LOCK = threading.Lock()
+
+# When imported by Gunicorn (not __main__), Gunicorn calls the 'app' object.
+# We need to ensure bootstrap() is called before the first request.
+@app.before_request
+def before_request_func():
+    bootstrap()
 
 if __name__ == "__main__":
-    print("--- Initializing Scraper and Driver (this may take a moment) ---")
-    _bootstrap()
-    print("--- Initialization Complete. Starting Flask Server. ---")
-
-    port = int(os.environ.get("PORT", 8000))
-    host = "0.0.0.0"
-
-    print(f"--- Flask server starting on http://{host}:{port} ---")
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+    bootstrap()
+    print("--- Initialization Complete. Starting Flask Dev Server. ---")
+    # This part is for local development only. Gunicorn is used in production.
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
 
