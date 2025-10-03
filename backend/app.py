@@ -25,9 +25,14 @@ FILTERS_FILE = os.path.join(os.path.dirname(__file__), 'filters.json')
 POSTS_FILE = os.path.join(os.path.dirname(__file__), 'posts.json')
 KNOWN_IDS_FILE = os.path.join(os.path.dirname(__file__), 'known_ids.json')
 
+def _env_true(name: str, default="0"):
+    return os.getenv(name, default) in ("1", "true", "True", "YES", "yes")
 
-# --- Cookie helpers (Netscape cookies.txt / JSON) ---
+ALLOW_LOGIN = _env_true("ALLOW_LOGIN", "0")  # default: don't log in programmatically
+
 def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"):
+    """Parse Netscape cookies.txt (7 columns) into a list of dicts.
+       We DO NOT set 'domain' for host-only cookies (no leading dot)."""
     cookies = []
     for line in text.splitlines():
         line = line.strip()
@@ -40,46 +45,83 @@ def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"
         domain, flag, path, secure, expiry, name, value = parts
         if domain_filter and (domain_filter not in domain):
             continue
-        cookie = {
+
+        c = {
             "name": name,
             "value": value,
             "path": path or "/",
             "secure": (secure.upper() == "TRUE"),
         }
-        if domain:
-            cookie["domain"] = domain
+        # Only keep 'domain' if it starts with a dot (shared cookie).
+        # For host-only (e.g., 'www.sahibinden.com'), omit 'domain' so Selenium
+        # sets a host-only cookie for the CURRENT host.
+        if domain.startswith("."):
+            c["domain"] = domain
+
         try:
             exp = int(expiry)
             if exp > 0:
-                cookie["expiry"] = exp
+                c["expiry"] = exp
         except Exception:
             pass
-        cookies.append(cookie)
+
+        # Keep a hint for routing (not passed to Selenium)
+        c["_host_hint"] = domain.lstrip(".")
+        cookies.append(c)
     return cookies
+
+
+def _add_cookies_for_host(driver, host_url: str, cookies: list):
+    """Navigate to host_url, then add all cookies whose _host_hint matches that host.
+       For cookies with 'domain' present (.sahibinden.com), we can set them from any subdomain.
+       For host-only cookies, we must be on the exact host (and we omit 'domain')."""
+    try:
+        driver.get(host_url)
+        time.sleep(0.5)
+    except Exception as e:
+        print("navigate failed:", host_url, e)
+        return
+
+    current_host = urlsplit(host_url).hostname or ""
+
+    for c in cookies:
+        # Work on a copy we can mutate
+        cookie = {k: v for k, v in c.items() if not k.startswith("_")}
+        host_hint = c.get("_host_hint", "")
+
+        # If cookie is host-only (no 'domain' key), only add when host matches exactly
+        is_host_only = ("domain" not in cookie)
+
+        if is_host_only and host_hint and host_hint != current_host:
+            continue  # wrong host for host-only cookie
+
+        try:
+            driver.add_cookie(cookie)
+        except Exception as e:
+            print("cookie add failed:", cookie.get("name"), e)
+
 
 def _prime_anon_cookies(driver):
     """
     Load logged-OUT cookies captured from a normal browser visit so we don't get
     forced to /login. Priority: ANON_COOKIES_TXT > ANON_COOKIES_JSON > ./cookies.txt
+    We do two passes:
+      - 'https://www.sahibinden.com/'
+      - 'https://sahibinden.com/'   (in case any cookies are tied to apex)
     """
     try:
         txt_env = os.getenv("ANON_COOKIES_TXT", "")
         json_env = os.getenv("ANON_COOKIES_JSON", "")
-        driver.get("https://www.sahibinden.com/")  # hit domain first or add_cookie() will fail
 
+        cookies = []
         if txt_env.strip():
             print("Priming cookies from ANON_COOKIES_TXT ...")
             cookies = _parse_netscape_cookies_txt(txt_env)
-            for c in cookies:
-                try:
-                    driver.add_cookie(c)
-                except Exception as e:
-                    print("cookie add failed:", c.get("name"), e)
-
         elif json_env.strip():
             print("Priming cookies from ANON_COOKIES_JSON ...")
             import json as _json
             arr = _json.loads(json_env)
+            # Normalize JSON cookies to our internal format
             for c in arr:
                 cookie = {
                     "name": c["name"],
@@ -87,28 +129,34 @@ def _prime_anon_cookies(driver):
                     "path": c.get("path", "/"),
                     "secure": c.get("secure", False),
                 }
-                if "domain" in c: cookie["domain"] = c["domain"]
-                if "expiry" in c: cookie["expiry"] = c["expiry"]
-                try:
-                    driver.add_cookie(cookie)
-                except Exception as e:
-                    print("cookie add failed:", cookie.get("name"), e)
-
+                if "domain" in c and c["domain"].startswith("."):
+                    cookie["domain"] = c["domain"]
+                    cookie["_host_hint"] = c["domain"].lstrip(".")
+                else:
+                    # host-only; require exact host later
+                    cookie["_host_hint"] = (c.get("domain") or "www.sahibinden.com").lstrip(".")
+                if "expiry" in c:
+                    cookie["expiry"] = c["expiry"]
+                cookies.append(cookie)
         else:
-            # Fallback: local file in the repo (less secure)
+            # Fallback local file
             file_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
             if os.path.exists(file_path):
                 print("Priming cookies from local cookies.txt ...")
                 with open(file_path, "r", encoding="utf-8") as f:
                     txt = f.read()
                 cookies = _parse_netscape_cookies_txt(txt)
-                for c in cookies:
-                    try:
-                        driver.add_cookie(c)
-                    except Exception as e:
-                        print("cookie add failed:", c.get("name"), e)
 
-        # Re-load so cookies take effect
+        if not cookies:
+            print("No anon cookies provided.")
+            return
+
+        # Pass 1: www
+        _add_cookies_for_host(driver, "https://www.sahibinden.com/", cookies)
+        # Pass 2: apex (some apps care)
+        _add_cookies_for_host(driver, "https://sahibinden.com/", cookies)
+
+        # Land on www
         driver.get("https://www.sahibinden.com/")
         time.sleep(1)
 
