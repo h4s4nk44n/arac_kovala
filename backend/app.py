@@ -8,6 +8,7 @@ import json
 import os
 import re
 import json
+import random
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 import mimetypes
@@ -347,8 +348,11 @@ def scrape_sahibinden(driver, url, known_posts):
             driver.save_screenshot(screenshot_path)
             print(f"Saved initial login page screenshot to: {screenshot_path}")
 
-            print("Typing password...")
-            driver.type("#password", SAHIBINDEN_PASS)
+            print("Typing password character by character...")
+            password_field = driver.find_element("#password")
+            for char in SAHIBINDEN_PASS:
+                password_field.send_keys(char)
+                time.sleep(random.uniform(0.08, 0.25))
             
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
@@ -389,7 +393,7 @@ def scrape_sahibinden(driver, url, known_posts):
 
             print("Waiting for page to process login...")
             time.sleep(5)
-            
+
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
             driver.save_screenshot(screenshot_path)
