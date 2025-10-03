@@ -355,7 +355,7 @@ def scrape_sahibinden(driver, url, known_posts):
             time.sleep(3)
 
             print("Clicking login button using JS...")
-            driver.js_click("#userLoginSubmitButton")
+            driver.uc_click("#userLoginSubmitButton")
             
             print("Waiting for page to process login...")
             time.sleep(5)
