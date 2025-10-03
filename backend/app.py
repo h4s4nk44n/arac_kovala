@@ -26,6 +26,96 @@ POSTS_FILE = os.path.join(os.path.dirname(__file__), 'posts.json')
 KNOWN_IDS_FILE = os.path.join(os.path.dirname(__file__), 'known_ids.json')
 
 
+# --- Cookie helpers (Netscape cookies.txt / JSON) ---
+def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"):
+    cookies = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        # Netscape format: domain  flag  path  secure  expiry  name  value
+        if len(parts) != 7:
+            continue
+        domain, flag, path, secure, expiry, name, value = parts
+        if domain_filter and (domain_filter not in domain):
+            continue
+        cookie = {
+            "name": name,
+            "value": value,
+            "path": path or "/",
+            "secure": (secure.upper() == "TRUE"),
+        }
+        if domain:
+            cookie["domain"] = domain
+        try:
+            exp = int(expiry)
+            if exp > 0:
+                cookie["expiry"] = exp
+        except Exception:
+            pass
+        cookies.append(cookie)
+    return cookies
+
+def _prime_anon_cookies(driver):
+    """
+    Load logged-OUT cookies captured from a normal browser visit so we don't get
+    forced to /login. Priority: ANON_COOKIES_TXT > ANON_COOKIES_JSON > ./cookies.txt
+    """
+    try:
+        txt_env = os.getenv("ANON_COOKIES_TXT", "")
+        json_env = os.getenv("ANON_COOKIES_JSON", "")
+        driver.get("https://www.sahibinden.com/")  # hit domain first or add_cookie() will fail
+
+        if txt_env.strip():
+            print("Priming cookies from ANON_COOKIES_TXT ...")
+            cookies = _parse_netscape_cookies_txt(txt_env)
+            for c in cookies:
+                try:
+                    driver.add_cookie(c)
+                except Exception as e:
+                    print("cookie add failed:", c.get("name"), e)
+
+        elif json_env.strip():
+            print("Priming cookies from ANON_COOKIES_JSON ...")
+            import json as _json
+            arr = _json.loads(json_env)
+            for c in arr:
+                cookie = {
+                    "name": c["name"],
+                    "value": c["value"],
+                    "path": c.get("path", "/"),
+                    "secure": c.get("secure", False),
+                }
+                if "domain" in c: cookie["domain"] = c["domain"]
+                if "expiry" in c: cookie["expiry"] = c["expiry"]
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    print("cookie add failed:", cookie.get("name"), e)
+
+        else:
+            # Fallback: local file in the repo (less secure)
+            file_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+            if os.path.exists(file_path):
+                print("Priming cookies from local cookies.txt ...")
+                with open(file_path, "r", encoding="utf-8") as f:
+                    txt = f.read()
+                cookies = _parse_netscape_cookies_txt(txt)
+                for c in cookies:
+                    try:
+                        driver.add_cookie(c)
+                    except Exception as e:
+                        print("cookie add failed:", c.get("name"), e)
+
+        # Re-load so cookies take effect
+        driver.get("https://www.sahibinden.com/")
+        time.sleep(1)
+
+    except Exception as e:
+        print("cookie priming failed:", e)
+
+
 def send_push_notification(title, body, data={}):
     if not PUSH_TOKENS:
         print("No registered devices to send notifications to.")
@@ -117,6 +207,31 @@ def scrape_sahibinden(driver, url, known_posts):
     SAHIBINDEN_PASS = "Bk9o2010d"
     
     driver.uc_open_with_reconnect(url, 4)
+
+    ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "0") in ("1", "true", "True")
+
+def scrape_sahibinden(driver, url, known_posts):
+    SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "prokaangamer@gmail.com")
+    SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "Bk9o2010d")
+
+    driver.uc_open_with_reconnect(url, 4)
+
+    ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "0") in ("1", "true", "True")
+
+def scrape_sahibinden(driver, url, known_posts):
+    SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "prokaangamer@gmail.com")
+    SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "Bk9o2010d")
+
+    driver.uc_open_with_reconnect(url, 4)
+
+    # If redirected to login (or login form visible), bail unless ALLOW_LOGIN=1
+    if ("login" in driver.current_url) or driver.is_element_visible("#username"):
+        print("Redirected to login / login form visible.")
+        if not ALLOW_LOGIN:
+            print("ALLOW_LOGIN=0 -> skipping login and backing off.")
+            time.sleep(60)
+            return set(), []
+
 
     if driver.is_element_visible("#username"):
         print("Login screen detected. Attempting to log in...")
@@ -248,8 +363,6 @@ def _save_data_to_disk():
 def _ensure_driver():
     global DRIVER
     if DRIVER is None:
-        # The Dockerfile handles Xvfb. We just need to run non-headless.
-        # The HEADLESS env var is set in the Dockerfile, but we can default to non-headless.
         headless_env = os.environ.get("HEADLESS", "0")
         run_headless = headless_env not in ("0", "false", "False", "")
 
@@ -257,10 +370,18 @@ def _ensure_driver():
         DRIVER = Driver(
             uc=True,
             headless=run_headless,
-            no_sandbox=True, # Important for running as root in Docker
-            disable_gpu=True
+            no_sandbox=True,   # Important for root in Docker
+            disable_gpu=True,
+            agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/141.0.0.0 Safari/537.36"),
+            locale_code="tr-TR",
+            window_size="1366,768",
+            # If you attach a Railway volume, uncomment to persist profile:
+            # user_data_dir="/app/chrome-profile",
         )
-        DRIVER.set_window_size(1920, 1080)
+        DRIVER.set_window_size(1366, 768)
+        _prime_anon_cookies(DRIVER)
     return DRIVER
 
 def _scrape_loop(poll_seconds: int = 60):
