@@ -271,7 +271,7 @@ def scrape_sahibinden(driver, url, known_posts):
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
     ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "1").lower() in ("1", "true", "yes")
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))
-    LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "600"))
+    LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "10"))
     SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", "/app/session_cookies.json")
 
     meta = getattr(driver, "_login_meta", {"attempts": 0, "last": 0.0})
