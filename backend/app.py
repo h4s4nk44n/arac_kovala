@@ -341,24 +341,59 @@ def scrape_sahibinden(driver, url, known_posts):
             print("Typing username...")
             driver.type("#username", SAHIBINDEN_USER)
             time.sleep(0.6)
-            
+
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
+
             print("Typing password...")
             driver.type("#password", SAHIBINDEN_PASS)
             
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
+
             print("Waiting for CAPTCHA to load...")
             time.sleep(2.5)
+
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
 
             print("Attempting to click CAPTCHA...")
             _handle_captcha_if_any()
             
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
+
             print("Waiting for CAPTCHA to verify...")
             time.sleep(3)
+
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
 
             print("Clicking login button using JS...")
             driver.js_click("#userLoginSubmitButton")
             
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
+
             print("Waiting for page to process login...")
             time.sleep(5)
+            
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
 
             if _is_on_login():
                 print("Login failed. Still on login page.")
