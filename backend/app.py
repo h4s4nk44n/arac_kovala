@@ -271,8 +271,12 @@ def scrape_sahibinden(driver, url, known_posts):
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
     ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "1").lower() in ("1", "true", "yes")
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))
-    LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "10"))
+    LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))
     SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", "/app/session_cookies.json")
+    
+    # Define screenshots directory at the top of the function
+    SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
+    os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
     meta = getattr(driver, "_login_meta", {"attempts": 0, "last": 0.0})
     driver._login_meta = meta
@@ -286,16 +290,14 @@ def scrape_sahibinden(driver, url, known_posts):
 
     def _accept_cookie_banner_if_any():
         try:
-            # Use a human-like click for the cookie banner
             if driver.is_element_present("#onetrust-accept-btn-handler"):
-                driver.uc_click("#onetrust-accept-btn-handler")
+                driver.js_click("#onetrust-accept-btn-handler")
                 time.sleep(0.5)
         except Exception:
             pass
 
     def _handle_captcha_if_any():
         try:
-            # This is already the most human-like click, so we keep it
             driver.uc_gui_click_captcha()
         except Exception:
             print("No Captcha found to handle")
@@ -316,9 +318,8 @@ def scrape_sahibinden(driver, url, known_posts):
 
     # ----------------- login only if forced -----------------
     if _is_on_login():
-        print("Redirected to login page. Attempting human-like login...")
+        print("Redirected to login page. Attempting robust login...")
 
-        # Cooldown and attempt limit logic
         now = time.time()
         if meta["attempts"] >= MAX_LOGIN_ATTEMPTS:
             print("Max login attempts reached; backing off.")
@@ -333,10 +334,10 @@ def scrape_sahibinden(driver, url, known_posts):
         
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            driver.save_screenshot(f"/app/screenshots/login_start_{timestamp}.png")
-            print("Saved initial login page screenshot.")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
 
-            # --- USE HUMAN-LIKE TYPING AND CLICKS ---
             print("Typing username...")
             driver.uc_type("#username", SAHIBINDEN_USER)
             time.sleep(0.6)
@@ -353,8 +354,8 @@ def scrape_sahibinden(driver, url, known_posts):
             print("Waiting for CAPTCHA to verify...")
             time.sleep(3)
 
-            print("Clicking login button...")
-            driver.uc_click("#userLoginSubmitButton")
+            print("Clicking login button using JS...")
+            driver.js_click("#userLoginSubmitButton")
             
             print("Waiting for page to process login...")
             time.sleep(5)
@@ -362,7 +363,9 @@ def scrape_sahibinden(driver, url, known_posts):
             if _is_on_login():
                 print("Login failed. Still on login page.")
                 timestamp_fail = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                driver.save_screenshot(f"/app/screenshots/login_failed_{timestamp_fail}.png")
+                screenshot_path_fail = os.path.join(SCREENSHOTS_DIR, f"login_failed_{timestamp_fail}.png")
+                driver.save_screenshot(screenshot_path_fail)
+                print(f"Saved failed login screenshot to: {screenshot_path_fail}")
                 return set(), []
             else:
                 print("Login successful! Saving cookies.")
@@ -371,10 +374,13 @@ def scrape_sahibinden(driver, url, known_posts):
         except Exception as e:
             print(f"An exception occurred during the login process: {e}")
             timestamp_exc = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            driver.save_screenshot(f"/app/screenshots/login_exception_{timestamp_exc}.png")
+            screenshot_path_exc = os.path.join(SCREENSHOTS_DIR, f"login_exception_{timestamp_exc}.png")
+            driver.save_screenshot(screenshot_path_exc)
+            print(f"Saved exception screenshot to: {screenshot_path_exc}")
             return set(), []
             
     # ----------------- scrape -----------------
+    # (Your full, original data scraping loop is preserved below)
     print("Proceeding to scrape data...")
     new_posts = []
     seen_new_ids = set()
