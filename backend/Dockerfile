@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Tell Selenium/SeleniumBase to use Chromium (binary path for Debian bookworm)
 ENV CHROME_BIN=/usr/bin/chromium \
     SB_CHROME_BINARY=/usr/bin/chromium \
-    HEADLESS=0
+    HEADLESS=1
 
 WORKDIR /app
 
@@ -37,4 +37,4 @@ COPY . /app
 # Run as root; Chrome will use --no-sandbox via app config
 
 # Start the Gunicorn server; Railway will pass $PORT
-CMD ["bash", "-lc", "exec xvfb-run -a -s '-screen 0 1920x1080x24' gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]
+CMD ["bash", "-lc", "exec gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]
