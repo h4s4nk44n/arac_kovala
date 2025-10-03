@@ -25,21 +25,25 @@ FILTERS_FILE = os.path.join(os.path.dirname(__file__), 'filters.json')
 POSTS_FILE = os.path.join(os.path.dirname(__file__), 'posts.json')
 KNOWN_IDS_FILE = os.path.join(os.path.dirname(__file__), 'known_ids.json')
 
+
+# ---- Env / flags ----
 def _env_true(name: str, default="0"):
     return os.getenv(name, default) in ("1", "true", "True", "YES", "yes")
 
-ALLOW_LOGIN = _env_true("ALLOW_LOGIN", "0")  # default: don't log in programmatically
+ALLOW_LOGIN = _env_true("ALLOW_LOGIN", "1")  # you said it must log in when needed
+MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))  # per process lifetime
+LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "600"))  # 10 min cooldown
+SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", "/app/session_cookies.json")
+
 
 def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"):
-    """Parse Netscape cookies.txt (7 columns) into a list of dicts.
-       We DO NOT set 'domain' for host-only cookies (no leading dot)."""
+    """Parse cookies.txt; omit 'domain' for host-only cookies to avoid domain mismatch."""
     cookies = []
     for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         parts = line.split("\t")
-        # Netscape format: domain  flag  path  secure  expiry  name  value
         if len(parts) != 7:
             continue
         domain, flag, path, secure, expiry, name, value = parts
@@ -52,67 +56,43 @@ def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"
             "path": path or "/",
             "secure": (secure.upper() == "TRUE"),
         }
-        # Only keep 'domain' if it starts with a dot (shared cookie).
-        # For host-only (e.g., 'www.sahibinden.com'), omit 'domain' so Selenium
-        # sets a host-only cookie for the CURRENT host.
         if domain.startswith("."):
-            c["domain"] = domain
-
+            c["domain"] = domain  # shared cookie ok
         try:
             exp = int(expiry)
             if exp > 0:
                 c["expiry"] = exp
         except Exception:
             pass
-
-        # Keep a hint for routing (not passed to Selenium)
-        c["_host_hint"] = domain.lstrip(".")
+        c["_host_hint"] = domain.lstrip(".")  # for routing
         cookies.append(c)
     return cookies
 
-
 def _add_cookies_for_host(driver, host_url: str, cookies: list):
-    """Navigate to host_url, then add all cookies whose _host_hint matches that host.
-       For cookies with 'domain' present (.sahibinden.com), we can set them from any subdomain.
-       For host-only cookies, we must be on the exact host (and we omit 'domain')."""
+    """Navigate to host_url, then add cookies. Host-only cookies only on exact host."""
     try:
         driver.get(host_url)
         time.sleep(0.5)
     except Exception as e:
         print("navigate failed:", host_url, e)
         return
-
     current_host = urlsplit(host_url).hostname or ""
-
     for c in cookies:
-        # Work on a copy we can mutate
         cookie = {k: v for k, v in c.items() if not k.startswith("_")}
         host_hint = c.get("_host_hint", "")
-
-        # If cookie is host-only (no 'domain' key), only add when host matches exactly
         is_host_only = ("domain" not in cookie)
-
         if is_host_only and host_hint and host_hint != current_host:
-            continue  # wrong host for host-only cookie
-
+            continue
         try:
             driver.add_cookie(cookie)
         except Exception as e:
             print("cookie add failed:", cookie.get("name"), e)
 
-
 def _prime_anon_cookies(driver):
-    """
-    Load logged-OUT cookies captured from a normal browser visit so we don't get
-    forced to /login. Priority: ANON_COOKIES_TXT > ANON_COOKIES_JSON > ./cookies.txt
-    We do two passes:
-      - 'https://www.sahibinden.com/'
-      - 'https://sahibinden.com/'   (in case any cookies are tied to apex)
-    """
+    """Optional: preload logged-OUT cookies so we don't get bounced to login."""
     try:
         txt_env = os.getenv("ANON_COOKIES_TXT", "")
         json_env = os.getenv("ANON_COOKIES_JSON", "")
-
         cookies = []
         if txt_env.strip():
             print("Priming cookies from ANON_COOKIES_TXT ...")
@@ -121,47 +101,79 @@ def _prime_anon_cookies(driver):
             print("Priming cookies from ANON_COOKIES_JSON ...")
             import json as _json
             arr = _json.loads(json_env)
-            # Normalize JSON cookies to our internal format
             for c in arr:
-                cookie = {
+                d = {
                     "name": c["name"],
                     "value": c["value"],
                     "path": c.get("path", "/"),
                     "secure": c.get("secure", False),
                 }
-                if "domain" in c and c["domain"].startswith("."):
-                    cookie["domain"] = c["domain"]
-                    cookie["_host_hint"] = c["domain"].lstrip(".")
+                if "domain" in c and str(c["domain"]).startswith("."):
+                    d["domain"] = c["domain"]
+                    d["_host_hint"] = c["domain"].lstrip(".")
                 else:
-                    # host-only; require exact host later
-                    cookie["_host_hint"] = (c.get("domain") or "www.sahibinden.com").lstrip(".")
+                    d["_host_hint"] = (c.get("domain") or "www.sahibinden.com").lstrip(".")
                 if "expiry" in c:
-                    cookie["expiry"] = c["expiry"]
-                cookies.append(cookie)
+                    d["expiry"] = c["expiry"]
+                cookies.append(d)
         else:
-            # Fallback local file
-            file_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-            if os.path.exists(file_path):
+            fp = os.path.join(os.path.dirname(__file__), "cookies.txt")
+            if os.path.exists(fp):
                 print("Priming cookies from local cookies.txt ...")
-                with open(file_path, "r", encoding="utf-8") as f:
-                    txt = f.read()
-                cookies = _parse_netscape_cookies_txt(txt)
+                with open(fp, "r", encoding="utf-8") as f:
+                    cookies = _parse_netscape_cookies_txt(f.read())
 
-        if not cookies:
+        if cookies:
+            _add_cookies_for_host(driver, "https://www.sahibinden.com/", cookies)
+            _add_cookies_for_host(driver, "https://sahibinden.com/", cookies)
+            driver.get("https://www.sahibinden.com/")
+            time.sleep(1)
+        else:
             print("No anon cookies provided.")
-            return
-
-        # Pass 1: www
-        _add_cookies_for_host(driver, "https://www.sahibinden.com/", cookies)
-        # Pass 2: apex (some apps care)
-        _add_cookies_for_host(driver, "https://sahibinden.com/", cookies)
-
-        # Land on www
-        driver.get("https://www.sahibinden.com/")
-        time.sleep(1)
-
     except Exception as e:
         print("cookie priming failed:", e)
+
+def _load_saved_session_cookies(driver):
+    """Load previously saved (logged-in) cookies, if any."""
+    try:
+        if not os.path.exists(SESSION_COOKIE_FILE):
+            return False
+        import json as _json
+        with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as f:
+            arr = _json.load(f)
+        if not arr:
+            return False
+        # Normalize & route via our adder
+        cookies = []
+        for c in arr:
+            d = { "name": c["name"], "value": c["value"], "path": c.get("path","/"), "secure": c.get("secure", False) }
+            dom = c.get("domain")
+            if dom and str(dom).startswith("."):
+                d["domain"] = dom
+                d["_host_hint"] = dom.lstrip(".")
+            else:
+                d["_host_hint"] = (dom or "www.sahibinden.com").lstrip(".")
+            if "expiry" in c:
+                d["expiry"] = c["expiry"]
+            cookies.append(d)
+        _add_cookies_for_host(driver, "https://www.sahibinden.com/", cookies)
+        driver.get("https://www.sahibinden.com/")
+        time.sleep(0.8)
+        return True
+    except Exception as e:
+        print("load session cookies failed:", e)
+        return False
+
+def _save_current_cookies(driver):
+    """Persist current cookies so we don't have to re-login next time."""
+    try:
+        import json as _json
+        arr = driver.get_cookies()
+        with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+            _json.dump(arr, f)
+        print(f"Saved session cookies to {SESSION_COOKIE_FILE}")
+    except Exception as e:
+        print("save cookies failed:", e)
 
 
 def send_push_notification(title, body, data={}):
@@ -251,57 +263,118 @@ def _download_image(image_url, post_id):
 
 
 def scrape_sahibinden(driver, url, known_posts):
-    SAHIBINDEN_USER = "prokaangamer@gmail.com"
-    SAHIBINDEN_PASS = "Bk9o2010d"
-    
+    # --- config from env ---
+    SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
+    SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
+    ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "1").lower() in ("1", "true", "yes")
+    MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))
+    LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "600"))
+    SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", "/app/session_cookies.json")
+
+    # throttle state lives on the driver (per-process)
+    meta = getattr(driver, "_login_meta", {"attempts": 0, "last": 0.0})
+    driver._login_meta = meta  # persist for next calls
+
+    def _is_on_login():
+        try:
+            u = (driver.current_url or "").lower()
+            return ("login" in u or "giris" in u or driver.is_element_visible("#username"))
+        except Exception:
+            return False
+
+    def _accept_cookie_banner_if_any():
+        try:
+            if driver.is_element_present("#onetrust-accept-btn-handler"):
+                driver.click("#onetrust-accept-btn-handler")
+                time.sleep(0.4)
+        except Exception:
+            pass
+
+    def _handle_captcha_if_any():
+        try:
+            driver.uc_gui_click_captcha()
+            time.sleep(1.0)
+        except Exception:
+            pass
+
+    def _save_current_cookies():
+        try:
+            import json as _json
+            with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+                _json.dump(driver.get_cookies(), f)
+            print(f"Saved session cookies to {SESSION_COOKIE_FILE}")
+        except Exception as e:
+            print("save cookies failed:", e)
+
+    # ----------------- navigate -----------------
     driver.uc_open_with_reconnect(url, 4)
+    _accept_cookie_banner_if_any()
 
-    ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "0") in ("1", "true", "True")
-
-def scrape_sahibinden(driver, url, known_posts):
-    SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "prokaangamer@gmail.com")
-    SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "Bk9o2010d")
-
-    driver.uc_open_with_reconnect(url, 4)
-
-    ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "0") in ("1", "true", "True")
-
-def scrape_sahibinden(driver, url, known_posts):
-    SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "prokaangamer@gmail.com")
-    SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "Bk9o2010d")
-
-    driver.uc_open_with_reconnect(url, 4)
-
-    # If redirected to login (or login form visible), bail unless ALLOW_LOGIN=1
-    if ("login" in driver.current_url) or driver.is_element_visible("#username"):
+    # ----------------- login only if forced -----------------
+    if _is_on_login():
         print("Redirected to login / login form visible.")
         if not ALLOW_LOGIN:
             print("ALLOW_LOGIN=0 -> skipping login and backing off.")
             time.sleep(60)
             return set(), []
 
+        now = time.time()
+        # throttle
+        if meta["attempts"] >= MAX_LOGIN_ATTEMPTS:
+            print("Max login attempts reached; backing off.")
+            time.sleep(60)
+            return set(), []
+        if meta["attempts"] > 0 and now - meta["last"] < LOGIN_COOLDOWN_SEC:
+            wait_left = int(LOGIN_COOLDOWN_SEC - (now - meta["last"]))
+            print(f"Login cooldown active ({wait_left}s left); skipping.")
+            time.sleep(60)
+            return set(), []
 
-    if driver.is_element_visible("#username"):
-        print("Login screen detected. Attempting to log in...")
+        meta["attempts"] += 1
+        meta["last"] = now
+
+        # attempt programmatic login once
+        if not SAHIBINDEN_USER or not SAHIBINDEN_PASS:
+            print("Missing SAHIBINDEN_USER/SAHIBINDEN_PASS; cannot log in.")
+            time.sleep(60)
+            return set(), []
+
+        print("Attempting programmatic login ...")
         try:
-            driver.type("#username", SAHIBINDEN_USER)
-            driver.type("#password", SAHIBINDEN_PASS)
+            driver.wait_for_element_visible("#username", timeout=12)
+            driver.type("#username", SAHIBINDEN_USER, timeout=0.5)
+            driver.type("#password", SAHIBINDEN_PASS, timeout=0.5)
+            _handle_captcha_if_any()
             driver.click("#userLoginSubmitButton")
-            print("Login submitted. Waiting for page to load...")
-            time.sleep(5)
+
+            # wait until we leave login page
+            end = time.time() + 25
+            while time.time() < end:
+                time.sleep(1.0)
+                if not _is_on_login():
+                    break
+
+            if _is_on_login():
+                print("Still on login page after submit (likely challenge).")
+                time.sleep(60)
+                return set(), []
+
+            print("Login appears successful; saving cookies.")
+            _save_current_cookies()
+            # go back to the target URL after login
+            driver.uc_open_with_reconnect(url, 3)
+            _accept_cookie_banner_if_any()
         except Exception as e:
-            print(f"An error occurred during login: {e}")
+            print("Login flow exception:", e)
+            time.sleep(60)
+            return set(), []
 
-    print("Pausing for 2 seconds to let page elements settle...")
-    time.sleep(2)
-    try:
-        print("Attempting to click CAPTCHA if present...")
-        driver.uc_gui_click_captcha()
-        print("CAPTCHA handled or was not present.")
-    except Exception:
-        print("No CAPTCHA found to click.")
-    time.sleep(5)
+    # ----------------- page settle & optional captcha -----------------
+    time.sleep(1.5)
+    _handle_captcha_if_any()
+    time.sleep(1.0)
 
+    # ----------------- scrape -----------------
     new_posts = []
     seen_new_ids = set()
     post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
@@ -309,13 +382,15 @@ def scrape_sahibinden(driver, url, known_posts):
 
     for post in post_elements:
         post_id = post.get_attribute('data-id')
-        if not post_id or 'nativeAd' in post.get_attribute('class'): continue
+        if not post_id or 'nativeAd' in post.get_attribute('class'):
+            continue
         current_ids.add(post_id)
         if post_id not in known_posts and post_id not in seen_new_ids:
             try:
                 title_el = post.find_element('css selector', 'a.classifiedTitle')
                 title_text = title_el.text.strip()
-                if not title_text or title_text.lower().startswith('www.sahibinden.com'): continue
+                if not title_text or title_text.lower().startswith('www.sahibinden.com'):
+                    continue
                 model = post.find_element('css selector', '.searchResultsTagAttributeValue').text.strip()
                 price = post.find_element('css selector', '.searchResultsPriceValue span').text.strip()
                 href = title_el.get_attribute('href')
@@ -323,13 +398,15 @@ def scrape_sahibinden(driver, url, known_posts):
                 segments = [seg for seg in (parsed.path or '').split('/') if seg]
                 brand = segments[0].replace('-', ' ').strip().title() if len(segments) > 0 else ''
                 serie = segments[1].replace('-', ' ').strip().title() if len(segments) > 1 else ''
-                
+
                 def _attr_texts(elem):
                     try:
                         cells = elem.find_elements('css selector', 'td.searchResultsAttributeValue')
-                        if not cells: cells = elem.find_elements('css selector', '.searchResultsAttributeValue')
+                        if not cells:
+                            cells = elem.find_elements('css selector', '.searchResultsAttributeValue')
                         return [c.text.strip() for c in cells if c.text]
-                    except Exception: return []
+                    except Exception:
+                        return []
 
                 attrs = _attr_texts(post)
                 year_val, km_val = None, None
@@ -337,17 +414,20 @@ def scrape_sahibinden(driver, url, known_posts):
                     try:
                         year_digits = re.sub(r'[^0-9]', '', (attrs[0] if len(attrs) > 0 else ''))
                         year_val = int(year_digits) if len(year_digits) >= 4 else None
-                    except Exception: year_val = None
+                    except Exception:
+                        year_val = None
                     try:
                         km_digits = re.sub(r'[^0-9]', '', (attrs[1] if len(attrs) > 1 else ''))
                         km_val = int(km_digits) if km_digits else None
-                    except Exception: km_val = None
-                
-                if not all([href, brand, price, model, year_val, km_val]): continue
-                
+                    except Exception:
+                        km_val = None
+
+                if not all([href, brand, price, model, year_val, km_val]):
+                    continue
+
                 thumb = _extract_img_src(post)
                 saved_name = _download_image(thumb, post_id) if thumb else None
-                
+
                 new_posts.append({
                     "id": post_id, "brand": brand, "serie": serie, "model": model,
                     "price": price, "url": href, "year": year_val, "km": km_val,
@@ -358,6 +438,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 print(f"Error scraping post with ID {post_id}: {e}")
 
     return current_ids, new_posts
+
 
 # -------------------- Flask App & State --------------------
 app = Flask(__name__)
