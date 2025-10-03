@@ -22,7 +22,7 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 
 PUSH_TOKENS = set()
 
- 
+SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
 
 FILTERS_FILE = os.path.join(os.path.dirname(__file__), 'filters.json')
 POSTS_FILE = os.path.join(os.path.dirname(__file__), 'posts.json')
@@ -286,16 +286,17 @@ def scrape_sahibinden(driver, url, known_posts):
 
     def _accept_cookie_banner_if_any():
         try:
+            # Use a human-like click for the cookie banner
             if driver.is_element_present("#onetrust-accept-btn-handler"):
-                driver.click("#onetrust-accept-btn-handler")
-                time.sleep(0.4)
+                driver.uc_click("#onetrust-accept-btn-handler")
+                time.sleep(0.5)
         except Exception:
             pass
 
     def _handle_captcha_if_any():
         try:
+            # This is already the most human-like click, so we keep it
             driver.uc_gui_click_captcha()
-            time.sleep(1.0)
         except Exception:
             print("No Captcha found to handle")
             pass
@@ -315,116 +316,66 @@ def scrape_sahibinden(driver, url, known_posts):
 
     # ----------------- login only if forced -----------------
     if _is_on_login():
-        print("Redirected to login / login form visible.")
-        
-        # --- NEW: TAKE SCREENSHOT FOR DEBUGGING ---
-        try:
-            os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved screenshot of the login page to: {screenshot_path}")
-        except Exception as e:
-            print(f"Could not save screenshot: {e}")
-        # --- END OF NEW CODE ---
-            
-        if not ALLOW_LOGIN:
-            print("ALLOW_LOGIN=0 -> skipping login and backing off.")
-            time.sleep(60)
-            return set(), []
+        print("Redirected to login page. Attempting human-like login...")
 
+        # Cooldown and attempt limit logic
         now = time.time()
         if meta["attempts"] >= MAX_LOGIN_ATTEMPTS:
             print("Max login attempts reached; backing off.")
-            time.sleep(60)
             return set(), []
         if meta["attempts"] > 0 and now - meta["last"] < LOGIN_COOLDOWN_SEC:
             wait_left = int(LOGIN_COOLDOWN_SEC - (now - meta["last"]))
             print(f"Login cooldown active ({wait_left}s left); skipping.")
-            time.sleep(60)
             return set(), []
-
+        
         meta["attempts"] += 1
         meta["last"] = now
-
-        if not SAHIBINDEN_USER or not SAHIBINDEN_PASS:
-            print("Missing SAHIBINDEN_USER/SAHIBINDEN_PASS; cannot log in.")
-            time.sleep(60)
-            return set(), []
-
-        print("Attempting programmatic login ...")
+        
         try:
-            driver.wait_for_element_visible("#username", timeout=12)
-            driver.type("#username", SAHIBINDEN_USER, timeout=0.5)
-            driver.type("#password", SAHIBINDEN_PASS, timeout=0.5)
-            time.sleep(10)
-            try:
-            
-                os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
-                driver.save_screenshot(screenshot_path)
-                print(f"Saved screenshot of the login page to: {screenshot_path}")
-            except Exception as e:
-                print(f"Could not save screenshot: {e}")
-            _handle_captcha_if_any()
-            try:
-            
-                os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
-                driver.save_screenshot(screenshot_path)
-                print(f"Saved screenshot of the login page to: {screenshot_path}")
-            except Exception as e:
-                print(f"Could not save screenshot: {e}")
-            driver.click("#userLoginSubmitButton")
-            try:
-                 
-                os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
-                driver.save_screenshot(screenshot_path)
-                print(f"Saved screenshot of the login page to: {screenshot_path}")
-            except Exception as e:
-                print(f"Could not save screenshot: {e}")
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            driver.save_screenshot(f"/app/screenshots/login_start_{timestamp}.png")
+            print("Saved initial login page screenshot.")
 
-            end = time.time() + 25
-            while time.time() < end:
-                time.sleep(1.0)
-                if not _is_on_login():
-                    break
+            # --- USE HUMAN-LIKE TYPING AND CLICKS ---
+            print("Typing username...")
+            driver.uc_type("#username", SAHIBINDEN_USER)
+            time.sleep(0.6)
+            
+            print("Typing password...")
+            driver.uc_type("#password", SAHIBINDEN_PASS)
+            
+            print("Waiting for CAPTCHA to load...")
+            time.sleep(2.5)
+
+            print("Attempting to click CAPTCHA...")
+            _handle_captcha_if_any()
+            
+            print("Waiting for CAPTCHA to verify...")
+            time.sleep(3)
+
+            print("Clicking login button...")
+            driver.uc_click("#userLoginSubmitButton")
+            
+            print("Waiting for page to process login...")
+            time.sleep(5)
 
             if _is_on_login():
-                print("Still on login page after submit (likely challenge).")
-                # --- NEW: TAKE SCREENSHOT FOR DEBUGGING ---
-                try:
-                     
-                    os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-                    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
-                    driver.save_screenshot(screenshot_path)
-                    print(f"Saved screenshot of the login page to: {screenshot_path}")
-                except Exception as e:
-                    print(f"Could not save screenshot: {e}")
-                # --- END OF NEW CODE ---
-                time.sleep(60)
+                print("Login failed. Still on login page.")
+                timestamp_fail = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                driver.save_screenshot(f"/app/screenshots/login_failed_{timestamp_fail}.png")
                 return set(), []
+            else:
+                print("Login successful! Saving cookies.")
+                _save_current_cookies()
 
-            print("Login appears successful; saving cookies.")
-            _save_current_cookies()
-            driver.uc_open_with_reconnect(url, 3)
-            _accept_cookie_banner_if_any()
         except Exception as e:
-            print("Login flow exception:", e)
-            time.sleep(60)
+            print(f"An exception occurred during the login process: {e}")
+            timestamp_exc = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            driver.save_screenshot(f"/app/screenshots/login_exception_{timestamp_exc}.png")
             return set(), []
-
-    # ----------------- page settle & optional captcha -----------------
-    time.sleep(1.5)
-    _handle_captcha_if_any()
-    time.sleep(1.0)
-
+            
     # ----------------- scrape -----------------
+    print("Proceeding to scrape data...")
     new_posts = []
     seen_new_ids = set()
     post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
