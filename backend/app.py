@@ -339,11 +339,11 @@ def scrape_sahibinden(driver, url, known_posts):
             print(f"Saved initial login page screenshot to: {screenshot_path}")
 
             print("Typing username...")
-            driver.uc_type("#username", SAHIBINDEN_USER)
+            driver.type("#username", SAHIBINDEN_USER)
             time.sleep(0.6)
             
             print("Typing password...")
-            driver.uc_type("#password", SAHIBINDEN_PASS)
+            driver.type("#password", SAHIBINDEN_PASS)
             
             print("Waiting for CAPTCHA to load...")
             time.sleep(2.5)
@@ -355,7 +355,7 @@ def scrape_sahibinden(driver, url, known_posts):
             time.sleep(3)
 
             print("Clicking login button using JS...")
-            driver.uc_click("#userLoginSubmitButton")
+            driver.js_click("#userLoginSubmitButton")
             
             print("Waiting for page to process login...")
             time.sleep(5)
