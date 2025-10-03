@@ -4,3 +4,4 @@ Flask-Cors
 requests
 gunicorn
 pyvirtualdisplay
+PyAutoGUI

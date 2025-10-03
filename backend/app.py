@@ -493,19 +493,14 @@ def _save_data_to_disk():
 def _ensure_driver():
     global DRIVER
     if DRIVER is None:
-        # Start a virtual display. The browser will run inside this.
         print("Starting virtual display...")
         display = Display(visible=0, size=(1366, 768))
         display.start()
-        
-        # Now, the HEADLESS env var is less important, but we ensure the driver
-        # itself is not started in its own headless mode.
-        run_headless = False
 
-        print(f"Starting Selenium driver inside virtual display...")
+        print("Starting Selenium driver inside virtual display...")
         DRIVER = Driver(
             uc=True,
-            headless=run_headless,   # Must be False to use the virtual display
+            headless=False,  # Must be False to use the virtual display
             no_sandbox=True,
             disable_gpu=True,
             agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -514,6 +509,19 @@ def _ensure_driver():
             locale_code="tr-TR",
             window_size="1366,768",
         )
+        
+        # This is the new, critical part to hide automation
+        DRIVER.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": """
+                    Object.defineProperty(navigator, 'webdriver', {
+                      get: () => undefined
+                    })
+                """
+            },
+        )
+        
         DRIVER.set_window_size(1366, 768)
         _prime_anon_cookies(DRIVER)
     return DRIVER
