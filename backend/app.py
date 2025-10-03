@@ -498,9 +498,16 @@ def _ensure_driver():
         display.start()
 
         print("Starting Selenium driver inside virtual display...")
+
+        # --- PROXY CONFIGURATION ---
+        # This will read the PROXY_STRING from your Railway environment variables
+        proxy_string = os.getenv("PROXY_STRING")
+        if not proxy_string:
+            print("WARNING: PROXY_STRING environment variable not set. Running without a proxy.")
+
         DRIVER = Driver(
             uc=True,
-            headless=False,  # Must be False to use the virtual display
+            headless=False,
             no_sandbox=True,
             disable_gpu=True,
             agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -508,9 +515,9 @@ def _ensure_driver():
                    "Chrome/141.0.0.0 Safari/537.36"),
             locale_code="tr-TR",
             window_size="1366,768",
+            proxy=proxy_string if proxy_string else None # Use the proxy if it's set
         )
-        
-        # This is the new, critical part to hide automation
+
         DRIVER.execute_cdp_cmd(
             "Page.addScriptToEvaluateOnNewDocument",
             {
@@ -521,7 +528,7 @@ def _ensure_driver():
                 """
             },
         )
-        
+
         DRIVER.set_window_size(1366, 768)
         _prime_anon_cookies(DRIVER)
     return DRIVER
