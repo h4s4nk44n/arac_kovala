@@ -22,7 +22,7 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 
 PUSH_TOKENS = set()
 
-SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
+ 
 
 FILTERS_FILE = os.path.join(os.path.dirname(__file__), 'filters.json')
 POSTS_FILE = os.path.join(os.path.dirname(__file__), 'posts.json')
@@ -297,6 +297,7 @@ def scrape_sahibinden(driver, url, known_posts):
             driver.uc_gui_click_captcha()
             time.sleep(1.0)
         except Exception:
+            print("No Captcha found to handle")
             pass
 
     def _save_current_cookies():
@@ -318,10 +319,9 @@ def scrape_sahibinden(driver, url, known_posts):
         
         # --- NEW: TAKE SCREENSHOT FOR DEBUGGING ---
         try:
-            screenshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
-            os.makedirs(screenshots_dir, exist_ok=True)
+            os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(screenshots_dir, f"login_page_{timestamp}.png")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
             driver.save_screenshot(screenshot_path)
             print(f"Saved screenshot of the login page to: {screenshot_path}")
         except Exception as e:
@@ -359,30 +359,30 @@ def scrape_sahibinden(driver, url, known_posts):
             driver.type("#password", SAHIBINDEN_PASS, timeout=0.5)
             time.sleep(10)
             try:
-                screenshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
-                os.makedirs(screenshots_dir, exist_ok=True)
+            
+                os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                screenshot_path = os.path.join(screenshots_dir, f"login_page_{timestamp}.png")
+                screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
                 driver.save_screenshot(screenshot_path)
                 print(f"Saved screenshot of the login page to: {screenshot_path}")
             except Exception as e:
                 print(f"Could not save screenshot: {e}")
             _handle_captcha_if_any()
             try:
-                screenshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
-                os.makedirs(screenshots_dir, exist_ok=True)
+            
+                os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                screenshot_path = os.path.join(screenshots_dir, f"login_page_{timestamp}.png")
+                screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
                 driver.save_screenshot(screenshot_path)
                 print(f"Saved screenshot of the login page to: {screenshot_path}")
             except Exception as e:
                 print(f"Could not save screenshot: {e}")
             driver.click("#userLoginSubmitButton")
             try:
-                screenshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
-                os.makedirs(screenshots_dir, exist_ok=True)
+                 
+                os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                screenshot_path = os.path.join(screenshots_dir, f"login_page_{timestamp}.png")
+                screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
                 driver.save_screenshot(screenshot_path)
                 print(f"Saved screenshot of the login page to: {screenshot_path}")
             except Exception as e:
@@ -398,10 +398,10 @@ def scrape_sahibinden(driver, url, known_posts):
                 print("Still on login page after submit (likely challenge).")
                 # --- NEW: TAKE SCREENSHOT FOR DEBUGGING ---
                 try:
-                    screenshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
-                    os.makedirs(screenshots_dir, exist_ok=True)
+                     
+                    os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
                     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    screenshot_path = os.path.join(screenshots_dir, f"login_page_{timestamp}.png")
+                    screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_page_{timestamp}.png")
                     driver.save_screenshot(screenshot_path)
                     print(f"Saved screenshot of the login page to: {screenshot_path}")
                 except Exception as e:
