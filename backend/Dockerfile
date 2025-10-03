@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8080
 
-# Install Chromium, Xvfb, and all dependencies including the missing xauth package
+# Install Chromium, Xvfb, and all dependencies for a headless environment
+# that can run a headed browser via a virtual display.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
@@ -19,14 +20,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 libxshmfence1 xdg-utils wget ca-certificates xvfb xauth && \
     rm -rf /var/lib/apt/lists/*
 
-# Tell Selenium/SeleniumBase to use Chromium (binary path for Debian bookworm)
+# Tell Selenium/SeleniumBase to use Chromium and disable headless mode
+# The app will use xvfb=True to run the browser in a virtual display.
 ENV CHROME_BIN=/usr/bin/chromium \
     SB_CHROME_BINARY=/usr/bin/chromium \
-    HEADLESS=1
+    HEADLESS=0
 
 WORKDIR /app
 
-# Install Python deps first for better layer caching
+# Install Python dependencies first for better layer caching
 COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip setuptools wheel && \
     pip install -r requirements.txt

@@ -492,22 +492,22 @@ def _save_data_to_disk():
 def _ensure_driver():
     global DRIVER
     if DRIVER is None:
+        # This will now be ignored because xvfb=True takes precedence
         headless_env = os.environ.get("HEADLESS", "0")
         run_headless = headless_env not in ("0", "false", "False", "")
 
-        print(f"Starting Selenium driver... headless={run_headless}")
+        print(f"Starting Selenium driver with virtual display (xvfb)...")
         DRIVER = Driver(
             uc=True,
-            headless=run_headless,
-            no_sandbox=True,   # Important for root in Docker
+            xvfb=True,  # <-- This is the most important change
+            headless=False, # We are running in a virtual display, so headless should be False
+            no_sandbox=True,
             disable_gpu=True,
             agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                    "AppleWebKit/537.36 (KHTML, like Gecko) "
                    "Chrome/141.0.0.0 Safari/537.36"),
             locale_code="tr-TR",
             window_size="1366,768",
-            # If you attach a Railway volume, uncomment to persist profile:
-            # user_data_dir="/app/chrome-profile",
         )
         DRIVER.set_window_size(1366, 768)
         _prime_anon_cookies(DRIVER)
