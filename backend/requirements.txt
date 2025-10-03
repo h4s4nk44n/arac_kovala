@@ -1,4 +1,4 @@
-seleniumbase
+seleniumbase>=4.20.0
 Flask
 Flask-Cors
 requests
