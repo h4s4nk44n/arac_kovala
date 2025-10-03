@@ -264,17 +264,12 @@ def _download_image(image_url, post_id):
 
 
 def scrape_sahibinden(driver, url, known_posts):
-    # --- config from env ---
     SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
-    ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "1").lower() in ("1", "true", "yes")
-    MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))
-    LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "600"))
-    SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", "/app/session_cookies.json")
+    SESSION_COOKIES_JSON = os.getenv("SESSION_COOKIES_JSON") # New variable
 
-    # throttle state lives on the driver (per-process)
     meta = getattr(driver, "_login_meta", {"attempts": 0, "last": 0.0})
-    driver._login_meta = meta  # persist for next calls
+    driver._login_meta = meta
 
     def _is_on_login():
         try:
@@ -298,14 +293,23 @@ def scrape_sahibinden(driver, url, known_posts):
         except Exception:
             pass
 
-    def _save_current_cookies():
+    # --- NEW LOGIN BYPASS LOGIC ---
+    # First, try to load session cookies if they are provided
+    if SESSION_COOKIES_JSON:
+        print("Attempting to load session from SESSION_COOKIES_JSON...")
         try:
-            import json as _json
-            with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
-                _json.dump(driver.get_cookies(), f)
-            print(f"Saved session cookies to {SESSION_COOKIE_FILE}")
+            cookies = json.loads(SESSION_COOKIES_JSON)
+            driver.get("https://www.sahibinden.com/") # Go to a page on the domain to set cookies
+            _accept_cookie_banner_if_any()
+            for cookie in cookies:
+                # The domain might need to be adjusted
+                if 'domain' in cookie and "sahibinden" not in cookie['domain']:
+                    cookie['domain'] = '.sahibinden.com'
+                driver.add_cookie(cookie)
+            print(f"Successfully loaded {len(cookies)} cookies.")
+            time.sleep(1)
         except Exception as e:
-            print("save cookies failed:", e)
+            print(f"Failed to load cookies: {e}. Falling back to standard login.")
 
     # ----------------- navigate -----------------
     driver.uc_open_with_reconnect(url, 4)
@@ -313,14 +317,14 @@ def scrape_sahibinden(driver, url, known_posts):
 
     # ----------------- login only if forced -----------------
     if _is_on_login():
-        print("Redirected to login / login form visible.")
-        if not ALLOW_LOGIN:
-            print("ALLOW_LOGIN=0 -> skipping login and backing off.")
-            time.sleep(60)
+        print("Redirected to login. Proceeding with standard login attempt.")
+        # ... (The rest of the function for standard login remains the same)
+        # This part will now only run if cookies are not provided or fail
+        if not SAHIBINDEN_USER or not SAHIBINDEN_PASS:
+            print("Missing credentials and cookies failed. Cannot log in.")
             return set(), []
-
+        
         now = time.time()
-        # throttle
         if meta["attempts"] >= MAX_LOGIN_ATTEMPTS:
             print("Max login attempts reached; backing off.")
             time.sleep(60)
@@ -334,12 +338,6 @@ def scrape_sahibinden(driver, url, known_posts):
         meta["attempts"] += 1
         meta["last"] = now
 
-        # attempt programmatic login once
-        if not SAHIBINDEN_USER or not SAHIBINDEN_PASS:
-            print("Missing SAHIBINDEN_USER/SAHIBINDEN_PASS; cannot log in.")
-            time.sleep(60)
-            return set(), []
-
         print("Attempting programmatic login ...")
         try:
             driver.wait_for_element_visible("#username", timeout=12)
@@ -348,7 +346,6 @@ def scrape_sahibinden(driver, url, known_posts):
             _handle_captcha_if_any()
             driver.click("#userLoginSubmitButton")
 
-            # wait until we leave login page
             end = time.time() + 25
             while time.time() < end:
                 time.sleep(1.0)
@@ -360,11 +357,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 time.sleep(60)
                 return set(), []
 
-            print("Login appears successful; saving cookies.")
-            _save_current_cookies()
-            # go back to the target URL after login
-            driver.uc_open_with_reconnect(url, 3)
-            _accept_cookie_banner_if_any()
+            print("Login appears successful.")
         except Exception as e:
             print("Login flow exception:", e)
             time.sleep(60)
@@ -376,6 +369,7 @@ def scrape_sahibinden(driver, url, known_posts):
     time.sleep(1.0)
 
     # ----------------- scrape -----------------
+    # (The rest of the scraping logic remains unchanged)
     new_posts = []
     seen_new_ids = set()
     post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
