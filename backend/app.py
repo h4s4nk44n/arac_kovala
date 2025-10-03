@@ -366,7 +366,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 driver.save_screenshot(screenshot_path)
                 print(f"Saved screenshot of the login page to: {screenshot_path}")
             except Exception as e:
-                    print(f"Could not save screenshot: {e}")
+                print(f"Could not save screenshot: {e}")
             _handle_captcha_if_any()
             try:
                 screenshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
@@ -376,7 +376,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 driver.save_screenshot(screenshot_path)
                 print(f"Saved screenshot of the login page to: {screenshot_path}")
             except Exception as e:
-                    print(f"Could not save screenshot: {e}")
+                print(f"Could not save screenshot: {e}")
             driver.click("#userLoginSubmitButton")
             try:
                 screenshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
