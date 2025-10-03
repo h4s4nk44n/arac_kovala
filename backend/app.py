@@ -355,6 +355,7 @@ def scrape_sahibinden(driver, url, known_posts):
             driver.wait_for_element_visible("#username", timeout=12)
             driver.type("#username", SAHIBINDEN_USER, timeout=0.5)
             driver.type("#password", SAHIBINDEN_PASS, timeout=0.5)
+            time.sleep(10)
             _handle_captcha_if_any()
             driver.click("#userLoginSubmitButton")
 
