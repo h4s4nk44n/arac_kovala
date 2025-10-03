@@ -382,10 +382,33 @@ def scrape_sahibinden(driver, url, known_posts):
     # ----------------- scrape -----------------
     # (Your full, original data scraping loop is preserved below)
     print("Proceeding to scrape data...")
+    try:
+        # 1. Wait for the main results table to be visible on the page
+        print("Waiting for search results to load...")
+        driver.wait_for_element_visible("table#searchResultsTable", timeout=15)
+
+        # 2. Take a screenshot of the actual data being scraped
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        screenshot_path = os.path.join(SCREENSHOTS_DIR, f"scraping_page_{timestamp}.png")
+        driver.save_screenshot(screenshot_path)
+        print(f"Saved screenshot of scraping page to: {screenshot_path}")
+
+    except Exception as e:
+        print(f"Search results not found or page did not load correctly: {e}")
+        timestamp_err = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        screenshot_path_err = os.path.join(SCREENSHOTS_DIR, f"scraping_error_{timestamp_err}.png")
+        driver.save_screenshot(screenshot_path_err)
+        print(f"Saved error screenshot to: {screenshot_path_err}")
+        return set(), [] # Exit if the page is broken
+
     new_posts = []
     seen_new_ids = set()
     post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
+
+     # 3. Add a log message if no posts are found
+    if not post_elements:
+        print("No ad listings found on the page.")
 
     for post in post_elements:
         post_id = post.get_attribute('data-id')
@@ -443,6 +466,11 @@ def scrape_sahibinden(driver, url, known_posts):
                 seen_new_ids.add(post_id)
             except Exception as e:
                 print(f"Error scraping post with ID {post_id}: {e}")
+
+    if new_posts:
+        print(f"Found {len(new_posts)} new posts.")
+    else:
+        print("Scrape complete. No new posts found on this run.")
 
     return current_ids, new_posts
 
