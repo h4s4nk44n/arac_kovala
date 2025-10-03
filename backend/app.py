@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 import mimetypes
 from urllib.parse import urlsplit
+from pyvirtualdisplay import Display
 import sys # Import sys to check the operating system
 
 import requests
@@ -492,15 +493,19 @@ def _save_data_to_disk():
 def _ensure_driver():
     global DRIVER
     if DRIVER is None:
-        # This will now be ignored because xvfb=True takes precedence
-        headless_env = os.environ.get("HEADLESS", "0")
-        run_headless = headless_env not in ("0", "false", "False", "")
+        # Start a virtual display. The browser will run inside this.
+        print("Starting virtual display...")
+        display = Display(visible=0, size=(1366, 768))
+        display.start()
+        
+        # Now, the HEADLESS env var is less important, but we ensure the driver
+        # itself is not started in its own headless mode.
+        run_headless = False
 
-        print(f"Starting Selenium driver with virtual display (xvfb)...")
+        print(f"Starting Selenium driver inside virtual display...")
         DRIVER = Driver(
             uc=True,
-            xvfb=True,  # <-- This is the most important change
-            headless=False, # We are running in a virtual display, so headless should be False
+            headless=run_headless,   # Must be False to use the virtual display
             no_sandbox=True,
             disable_gpu=True,
             agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
