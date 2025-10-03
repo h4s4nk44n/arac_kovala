@@ -35,7 +35,7 @@ def _env_true(name: str, default="0"):
 
 ALLOW_LOGIN = _env_true("ALLOW_LOGIN", "1")  # you said it must log in when needed
 MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))  # per process lifetime
-LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "600"))  # 10 min cooldown
+LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))  # 5 sec cooldown
 SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", "/app/session_cookies.json")
 
 
