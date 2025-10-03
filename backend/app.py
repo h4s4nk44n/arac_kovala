@@ -369,6 +369,17 @@ def scrape_sahibinden(driver, url, known_posts):
 
             if _is_on_login():
                 print("Still on login page after submit (likely challenge).")
+                # --- NEW: TAKE SCREENSHOT FOR DEBUGGING ---
+                try:
+                    screenshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
+                    os.makedirs(screenshots_dir, exist_ok=True)
+                    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    screenshot_path = os.path.join(screenshots_dir, f"login_page_{timestamp}.png")
+                    driver.save_screenshot(screenshot_path)
+                    print(f"Saved screenshot of the login page to: {screenshot_path}")
+                except Exception as e:
+                    print(f"Could not save screenshot: {e}")
+                # --- END OF NEW CODE ---
                 time.sleep(60)
                 return set(), []
 
