@@ -1,5 +1,5 @@
 from seleniumbase import Driver
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, abort
 from flask_cors import CORS
 import threading
 import time
@@ -21,6 +21,8 @@ IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'images')
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
 PUSH_TOKENS = set()
+
+SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
 
 FILTERS_FILE = os.path.join(os.path.dirname(__file__), 'filters.json')
 POSTS_FILE = os.path.join(os.path.dirname(__file__), 'posts.json')
@@ -703,6 +705,27 @@ def register_push_token():
         return jsonify({"status": "ok"})
     return jsonify({"error": "Invalid token provided."}), 400
 
+@app.get('/screenshots')
+def list_screenshots():
+    """Lists all the filenames in the screenshots directory."""
+    if not os.path.isdir(SCREENSHOTS_DIR):
+        return jsonify({"error": "Screenshots directory not found."}), 404
+    
+    files = sorted(
+        [f for f in os.listdir(SCREENSHOTS_DIR) if f.endswith('.png')],
+        reverse=True
+    )
+    return jsonify(files)
+
+@app.get('/screenshots/<path:filename>')
+def serve_screenshot(filename):
+    """Serves a specific screenshot file."""
+    try:
+        return send_from_directory(SCREENSHOTS_DIR, filename)
+    except FileNotFoundError:
+        abort(404)
+
+
 # --- MODIFIED: Use a single bootstrap function ---
 def bootstrap():
     """Load data and start background threads. Safe to call multiple times."""
@@ -714,6 +737,8 @@ def bootstrap():
         _load_data_from_disk()
         _start_scraper_thread()
         _BOOTSTRAPPED = True
+
+
 
 _BOOTSTRAPPED = False
 _BOOTSTRAP_LOCK = threading.Lock()
