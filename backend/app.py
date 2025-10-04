@@ -362,7 +362,7 @@ def scrape_sahibinden(driver, url, known_posts):
     seen_new_ids = set()
     post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
-    IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi'}
+    
      # 3. Add a log message if no posts are found
     if not post_elements:
         print("No ad listings found on the page.")
@@ -406,7 +406,7 @@ def scrape_sahibinden(driver, url, known_posts):
                         serie = raw_segments[cat_idx + 2].replace('-', ' ').strip().title()
                 else:
                     # fallback: old logic
-                    IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi'}
+                    IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi', 'suv', 'pickup'}
                     filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS]
                     all_words = '-'.join(filtered_segments).split('-')
                     car_info_parts = [part for part in all_words if part not in IGNORE_WORDS]
