@@ -298,11 +298,18 @@ def scrape_sahibinden(driver, url, known_posts):
             pass
 
     def _handle_captcha_if_any():
-        try:
-            driver.uc_gui_click_captcha()
-        except Exception:
-            print("No Captcha found to handle")
-            pass
+        # First, check if a CAPTCHA iframe is visible on the page
+        captcha_present = driver.is_element_visible('iframe[src*="recaptcha"]')
+        if captcha_present:
+            print("CAPTCHA detected. Attempting to click it...")
+            try:
+                driver.uc_gui_click_captcha()
+                print("Waiting for CAPTCHA to verify after click...")
+                time.sleep(3) # Wait for the green checkmark
+            except Exception as e:
+                print(f"An error occurred while trying to click CAPTCHA: {e}")
+        else:
+            print("No CAPTCHA detected on the page. Skipping CAPTCHA click.")
 
     def _save_current_cookies():
         try:
