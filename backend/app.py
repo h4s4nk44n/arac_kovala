@@ -385,8 +385,27 @@ def scrape_sahibinden(driver, url, known_posts):
                 href = title_el.get_attribute('href')
                 parsed = urlparse(href or '')
                 segments = [seg for seg in (parsed.path or '').split('/') if seg]
-                brand = segments[0].replace('-', ' ').strip().title() if len(segments) > 0 else ''
-                serie = segments[1].replace('-', ' ').strip().title() if len(segments) > 1 else ''
+
+                # NEW: find category index and take brand/serie after it
+                brand = ''
+                serie = ''
+                try:
+                    cat_indices = []
+                    for cat in ('otomobil', 'arazi-suv-pickup'):
+                        if cat in segments:
+                            cat_indices.append(segments.index(cat))
+                    if cat_indices:
+                        cat_idx = min(cat_indices)
+                        if len(segments) > cat_idx + 1:
+                            brand = segments[cat_idx + 1].replace('-', ' ').strip().title()
+                        if len(segments) > cat_idx + 2:
+                            serie = segments[cat_idx + 2].replace('-', ' ').strip().title()
+                    else:
+                        # Fallback: old method if category not found
+                        if len(segments) > 0: brand = segments[0].replace('-', ' ').strip().title()
+                        if len(segments) > 1: serie = segments[1].replace('-', ' ').strip().title()
+                except Exception:
+                    pass
 
                 def _attr_texts(elem):
                     try:
