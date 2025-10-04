@@ -482,50 +482,45 @@ def _save_data_to_disk():
 
 # --- MODIFIED FOR DOCKER DEPLOYMENT ---
 def _ensure_driver():
-    global DRIVER
-    if DRIVER is None:
-        print("Starting virtual display...")
-        display = Display(visible=0, size=(1366, 768))
-        display.start()
+    """Creates and returns a new Selenium driver instance."""
+    print("Starting virtual display...")
+    display = Display(visible=0, size=(1366, 768))
+    display.start()
 
-        print("Starting Selenium driver inside virtual display...")
+    print("Starting a new Selenium driver instance...")
 
-        # --- PROXY CONFIGURATION ---
-        # This will read the PROXY_STRING from your Railway environment variables
-        proxy_string = os.getenv("PROXY_STRING")
-        if not proxy_string:
-            print("WARNING: PROXY_STRING environment variable not set. Running without a proxy.")
+    proxy_string = os.getenv("PROXY_STRING")
+    if not proxy_string:
+        print("WARNING: PROXY_STRING not set. Running without a proxy.")
 
-        DRIVER = Driver(
-            uc=True,
-            headless=False,
-            no_sandbox=True,
-            disable_gpu=True,
-            agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                   "AppleWebKit/537.36 (KHTML, like Gecko) "
-                   "Chrome/141.0.0.0 Safari/537.36"),
-            locale_code="tr-TR",
-            window_size="1366,768",
-            proxy=proxy_string if proxy_string else None # Use the proxy if it's set
-        )
+    driver = Driver(
+        uc=True,
+        headless=False,
+        no_sandbox=True,
+        disable_gpu=True,
+        agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+               "AppleWebKit/537.36 (KHTML, like Gecko) "
+               "Chrome/141.0.0.0 Safari/537.36"),
+        locale_code="tr-TR",
+        window_size="1366,768",
+        proxy=proxy_string if proxy_string else None
+    )
 
-        DRIVER.execute_cdp_cmd(
-            "Page.addScriptToEvaluateOnNewDocument",
-            {
-                "source": """
-                    Object.defineProperty(navigator, 'webdriver', {
-                      get: () => undefined
-                    })
-                """
-            },
-        )
-
-        DRIVER.set_window_size(1366, 768)
-        _prime_anon_cookies(DRIVER)
-    return DRIVER
+    driver.execute_cdp_cmd(
+        "Page.addScriptToEvaluateOnNewDocument",
+        {
+            "source": """
+                Object.defineProperty(navigator, 'webdriver', {
+                  get: () => undefined
+                })
+            """
+        },
+    )
+    
+    # We no longer need _prime_anon_cookies because the main function handles it.
+    return driver, display
 
 def _scrape_loop(poll_seconds: int = 60):
-    driver = _ensure_driver()
     print("Scraper loop started.")
     while not STOP_EVENT.is_set():
         try:
@@ -536,10 +531,16 @@ def _scrape_loop(poll_seconds: int = 60):
                 continue
 
             for flt in items:
-                fid = flt['id']
-                url = flt['url']
-                with STATE_LOCK: known = KNOWN_IDS.setdefault(fid, set())
+                driver = None
+                display = None
                 try:
+                    # 1. Create a fresh driver and display for this specific scrape
+                    driver, display = _ensure_driver()
+                    
+                    fid = flt['id']
+                    url = flt['url']
+                    with STATE_LOCK: known = KNOWN_IDS.setdefault(fid, set())
+                    
                     current_ids, new_posts = scrape_sahibinden(driver, url, known)
                     if new_posts:
                         now_iso = datetime.now(timezone.utc).isoformat()
@@ -578,14 +579,19 @@ def _scrape_loop(poll_seconds: int = 60):
 
                 except Exception as e:
                     print(f"Error scraping {url}: {e}")
+                finally:
+                    # 2. IMPORTANT: Always shut down the driver and display
+                    if driver:
+                        driver.quit()
+                    if display:
+                        display.stop()
+                    print("Driver and display for this run have been closed.")
+            print(f"Scrape cycle complete. Waiting for {poll_seconds} seconds...")
             time.sleep(poll_seconds)
         except Exception as e:
             print(f"Loop error: {e}")
             time.sleep(poll_seconds)
 
-    try:
-        driver.quit()
-    except Exception: pass
     print("Scraper loop stopped.")
 
 
