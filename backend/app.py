@@ -92,35 +92,14 @@ def _add_cookies_for_host(driver, host_url: str, cookies: list):
         except Exception as e:
             print("cookie add failed:", cookie.get("name"), e)
 
+
 def _prime_anon_cookies(driver):
     """
-    If SESSION_COOKIES_JSON is provided, use it to establish an initial session.
-    This helps bypass initial bot checks before navigating to the target URL.
+    This function is intentionally left blank.
+    Session handling is now managed by scrape_sahibinden.
     """
-    SESSION_COOKIES_JSON = os.getenv("SESSION_COOKIES_JSON")
-    if not SESSION_COOKIES_JSON:
-        print("No session cookies provided. Proceeding with a fresh session.")
-        return
-
-    print("Found SESSION_COOKIES_JSON. Attempting to prime session...")
-    try:
-        cookies = json.loads(SESSION_COOKIES_JSON)
-        # Go to the site's domain to set the cookies
-        driver.get("https://www.sahibinden.com/")
-        
-        for cookie in cookies:
-            # Clean the cookie to a format the driver accepts
-            clean_cookie = {k: v for k, v in cookie.items() if k in ["name", "value", "domain", "path", "secure", "expiry"]}
-            if 'expirationDate' in cookie and 'expiry' not in clean_cookie:
-                clean_cookie['expiry'] = int(cookie['expirationDate'])
-            driver.add_cookie(clean_cookie)
-            
-        print(f"Successfully primed session with {len(cookies)} cookies.")
-        driver.get("https://www.sahibinden.com/") # Refresh the page to apply the session
-        time.sleep(1)
-
-    except Exception as e:
-        print(f"Could not prime session from SESSION_COOKIES_JSON: {e}")
+    print("Bypassing legacy cookie priming. Session will be handled by the scraper.")
+    pass
 
 
 def send_push_notification(title, body, data={}):
@@ -218,7 +197,7 @@ def scrape_sahibinden(driver, url, known_posts):
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))
     LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))
     
-    # Define screenshots directory at the top of the function
+    # Define screenshots directory at the top
     SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
     os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
@@ -253,6 +232,7 @@ def scrape_sahibinden(driver, url, known_posts):
         else:
             print("No CAPTCHA detected on the page. Skipping CAPTCHA click.")
 
+
     def _save_current_cookies():
         try:
             import json as _json
@@ -266,22 +246,32 @@ def scrape_sahibinden(driver, url, known_posts):
     if SESSION_COOKIES_JSON:
         print("Attempting to load session from SESSION_COOKIES_JSON...")
         try:
-            cookies = json.loads(SESSION_COOKIES_JSON)
+            # 1. Go to the base domain FIRST. This is the crucial step.
             driver.get("https://www.sahibinden.com/")
             _accept_cookie_banner_if_any()
+
+            cookies = json.loads(SESSION_COOKIES_JSON)
             
+            # 2. Add cookies one by one to the current domain
             for cookie in cookies:
-                clean_cookie = {k: v for k, v in cookie.items() if k in ["name", "value", "domain", "path", "secure", "expiry"]}
+                # The browser requires a specific format. We remove extra keys.
+                clean_cookie = {k: v for k, v in cookie.items() if k not in ["hostOnly", "session", "storeId", "firstPartyDomain", "partitionKey", "sameSite"]}
+                if 'expirationDate' in clean_cookie:
+                    clean_cookie['expiry'] = int(clean_cookie.pop('expirationDate'))
+                
                 driver.add_cookie(clean_cookie)
                 
             print(f"Successfully loaded {len(cookies)} cookies.")
-            time.sleep(1)
-            # Navigate to the final target URL after loading cookies
+            
+            # 3. Navigate to the final target URL with the active session
             driver.get(url)
             _accept_cookie_banner_if_any()
             time.sleep(2)
+
         except Exception as e:
             print(f"Cookie loading failed: {e}. Falling back to standard login.")
+            driver.uc_open_with_reconnect(url, 4) # Navigate to the target URL normally
+            _accept_cookie_banner_if_any()
     else:
         # Navigate normally if no cookies are provided
         driver.uc_open_with_reconnect(url, 4)
