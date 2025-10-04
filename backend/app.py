@@ -378,7 +378,9 @@ def scrape_sahibinden(driver, url, known_posts):
                 title_text = title_el.text.strip()
                 if not title_text or title_text.lower().startswith('www.sahibinden.com'):
                     continue
-                model = post.find_element('css selector', '.searchResultsTagAttributeValue').text.strip()
+
+                model = post.find_element('css selector', '.searchResultsTagAttributeValue, .searchResultsAttributeValue').text.strip()
+
                 price = post.find_element('css selector', '.searchResultsPriceValue span').text.strip()
                 href = title_el.get_attribute('href')
                 parsed = urlparse(href or '')
