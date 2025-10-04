@@ -407,7 +407,7 @@ def scrape_sahibinden(driver, url, known_posts):
                     serie = car_info_parts[1].replace('-', ' ').strip().title()
                 # --- END OF NEW, CORRECTED LOGIC ---
 
-                
+
                 print(f"brand : {brand}, serie : {serie}")
                 def _attr_texts(elem):
                     try:
@@ -438,10 +438,12 @@ def scrape_sahibinden(driver, url, known_posts):
                 thumb = _extract_img_src(post)
                 saved_name = _download_image(thumb, post_id) if thumb else None
 
+                custom_title = f"{brand} {model} {title_text}"
+
                 new_posts.append({
                     "id": post_id, "brand": brand, "serie": serie, "model": model,
                     "price": price, "url": href, "year": year_val, "km": km_val,
-                    "image": saved_name,
+                    "image": saved_name, "title": custom_title,
                 })
 
                 print(f"id: {post_id}, brand: {brand}, serie: {serie}, model: {model}, price: {price}, url: {href}, year: {year_val}, km: {km_val}")
@@ -593,8 +595,8 @@ def _scrape_loop(poll_seconds: int = 60):
                         print(f"Found {len(new_posts)} new posts for filter '{flt.get('name')}'. List capped at 10. Sending notifications...")
                         
                         for post in new_posts:
-                            title = f"{post.get('brand')} {post.get('serie')} {post.get('model')}"
-                            body = f"New price: {post.get('price')}"
+                            title = f"{post.get('custom_title')}"
+                            body = f"Price: {post.get('price')}"
                             send_push_notification(title, body, data={'url': post.get('url')})
                     
                     with STATE_LOCK:
