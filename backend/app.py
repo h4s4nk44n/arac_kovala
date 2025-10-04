@@ -25,9 +25,13 @@ PUSH_TOKENS = set()
 
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
 
-FILTERS_FILE = os.path.join(os.path.dirname(__file__), 'filters.json')
-POSTS_FILE = os.path.join(os.path.dirname(__file__), 'posts.json')
-KNOWN_IDS_FILE = os.path.join(os.path.dirname(__file__), 'known_ids.json')
+DATA_DIR = os.getenv('RAILWAY_VOLUME_MOUNT_PATH', os.path.dirname(__file__))
+print(f"Using data directory: {DATA_DIR}")
+os.makedirs(DATA_DIR, exist_ok=True) # Ensure the directory exists
+
+FILTERS_FILE = os.path.join(DATA_DIR, 'filters.json')
+POSTS_FILE = os.path.join(DATA_DIR, 'posts.json')
+KNOWN_IDS_FILE = os.path.join(DATA_DIR, 'known_ids.json')
 
 
 # ---- Env / flags ----
