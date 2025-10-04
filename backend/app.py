@@ -362,7 +362,7 @@ def scrape_sahibinden(driver, url, known_posts):
     seen_new_ids = set()
     post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
-    IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay'}
+    IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi'}
      # 3. Add a log message if no posts are found
     if not post_elements:
         print("No ad listings found on the page.")
@@ -384,28 +384,36 @@ def scrape_sahibinden(driver, url, known_posts):
                 price = post.find_element('css selector', '.searchResultsPriceValue span').text.strip()
                 href = title_el.get_attribute('href')
                 
-                # --- START OF NEW, CORRECTED LOGIC ---
                 parsed = urlparse(href or '')
                 raw_segments = [seg for seg in (parsed.path or '').split('/') if seg]
-                
-                # First, filter out any complete segments that are filler words (like 'ilan', 'detay')
-                filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS]
-                
-                # Now, join the remaining segments and split them by '-', then filter again
-                # This correctly handles both separate segments and combined slugs
-                all_words = '-'.join(filtered_segments).split('-')
-                car_info_parts = [part for part in all_words if part not in IGNORE_WORDS]
 
                 brand = ''
                 serie = ''
 
-                # Find the first real car part (the brand)
-                if len(car_info_parts) > 0:
-                    brand = car_info_parts[0].replace('-', ' ').strip().title()
-                # Find the second real car part (the series)
-                if len(car_info_parts) > 1:
-                    serie = car_info_parts[1].replace('-', ' ').strip().title()
-                # --- END OF NEW, CORRECTED LOGIC ---
+                # Find the category segment and extract brand/serie after it
+                category_slugs = ['otomobil', 'arazi-suv-pickup']
+                cat_idx = -1
+                for slug in category_slugs:
+                    if slug in raw_segments:
+                        cat_idx = raw_segments.index(slug)
+                        break
+
+                if cat_idx != -1:
+                    # Brand is next segment, serie is the one after (if present)
+                    if len(raw_segments) > cat_idx + 1:
+                        brand = raw_segments[cat_idx + 1].replace('-', ' ').strip().title()
+                    if len(raw_segments) > cat_idx + 2:
+                        serie = raw_segments[cat_idx + 2].replace('-', ' ').strip().title()
+                else:
+                    # fallback: old logic
+                    IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi'}
+                    filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS]
+                    all_words = '-'.join(filtered_segments).split('-')
+                    car_info_parts = [part for part in all_words if part not in IGNORE_WORDS]
+                    if len(car_info_parts) > 0:
+                        brand = car_info_parts[0].replace('-', ' ').strip().title()
+                    if len(car_info_parts) > 1:
+                        serie = car_info_parts[1].replace('-', ' ').strip().title()
 
 
                 print(f"brand : {brand}, serie : {serie}")
