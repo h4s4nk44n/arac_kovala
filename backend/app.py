@@ -197,7 +197,6 @@ def scrape_sahibinden(driver, url, known_posts):
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))
     LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))
     
-    # Define screenshots directory at the top
     SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
     os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
@@ -255,9 +254,9 @@ def scrape_sahibinden(driver, url, known_posts):
             # 2. Add cookies one by one to the current domain
             for cookie in cookies:
                 # The browser requires a specific format. We remove extra keys.
-                clean_cookie = {k: v for k, v in cookie.items() if k not in ["hostOnly", "session", "storeId", "firstPartyDomain", "partitionKey", "sameSite"]}
-                if 'expirationDate' in clean_cookie:
-                    clean_cookie['expiry'] = int(clean_cookie.pop('expirationDate'))
+                clean_cookie = {k: v for k, v in cookie.items() if k in ["name", "value", "domain", "path", "secure"]}
+                if 'expirationDate' in cookie:
+                    clean_cookie['expiry'] = int(cookie['expirationDate'])
                 
                 driver.add_cookie(clean_cookie)
                 
@@ -270,7 +269,7 @@ def scrape_sahibinden(driver, url, known_posts):
 
         except Exception as e:
             print(f"Cookie loading failed: {e}. Falling back to standard login.")
-            driver.uc_open_with_reconnect(url, 4) # Navigate to the target URL normally
+            driver.uc_open_with_reconnect(url, 4)
             _accept_cookie_banner_if_any()
     else:
         # Navigate normally if no cookies are provided
