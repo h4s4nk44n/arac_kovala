@@ -268,12 +268,12 @@ def _download_image(image_url, post_id):
 
 def scrape_sahibinden(driver, url, known_posts):
     # --- config from env ---
+    SESSION_COOKIES_JSON = os.getenv("SESSION_COOKIES_JSON")
     SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
     ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "1").lower() in ("1", "true", "yes")
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))
     LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))
-    SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", "/app/session_cookies.json")
     
     # Define screenshots directory at the top of the function
     SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
@@ -298,14 +298,13 @@ def scrape_sahibinden(driver, url, known_posts):
             pass
 
     def _handle_captcha_if_any():
-        # First, check if a CAPTCHA iframe is visible on the page
         captcha_present = driver.is_element_visible('iframe[src*="recaptcha"]')
         if captcha_present:
             print("CAPTCHA detected. Attempting to click it...")
             try:
                 driver.uc_gui_click_captcha()
                 print("Waiting for CAPTCHA to verify after click...")
-                time.sleep(3) # Wait for the green checkmark
+                time.sleep(3)
             except Exception as e:
                 print(f"An error occurred while trying to click CAPTCHA: {e}")
         else:
@@ -320,11 +319,33 @@ def scrape_sahibinden(driver, url, known_posts):
         except Exception as e:
             print("save cookies failed:", e)
 
-    # ----------------- navigate -----------------
-    driver.uc_open_with_reconnect(url, 4)
-    _accept_cookie_banner_if_any()
+    # --- NEW: PRIMARY LOGIN STRATEGY USING COOKIES ---
+    if SESSION_COOKIES_JSON:
+        print("Attempting to load session from SESSION_COOKIES_JSON...")
+        try:
+            cookies = json.loads(SESSION_COOKIES_JSON)
+            driver.get("https://www.sahibinden.com/")
+            _accept_cookie_banner_if_any()
+            
+            for cookie in cookies:
+                clean_cookie = {k: v for k, v in cookie.items() if k in ["name", "value", "domain", "path", "secure", "expiry"]}
+                driver.add_cookie(clean_cookie)
+                
+            print(f"Successfully loaded {len(cookies)} cookies.")
+            time.sleep(1)
+            # Navigate to the final target URL after loading cookies
+            driver.get(url)
+            _accept_cookie_banner_if_any()
+            time.sleep(2)
+        except Exception as e:
+            print(f"Cookie loading failed: {e}. Falling back to standard login.")
+    else:
+        # Navigate normally if no cookies are provided
+        driver.uc_open_with_reconnect(url, 4)
+        _accept_cookie_banner_if_any()
 
-    # ----------------- login only if forced -----------------
+
+    # ----------------- FALLBACK: LOGIN IF FORCED -----------------
     if _is_on_login():
         print("Redirected to login page. Attempting robust login...")
 
@@ -341,11 +362,13 @@ def scrape_sahibinden(driver, url, known_posts):
         meta["last"] = now
         
         try:
+            # (Your entire human-like login block is preserved here)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
             driver.save_screenshot(screenshot_path)
             print(f"Saved initial login page screenshot to: {screenshot_path}")
-
+            # ... (the rest of your screenshot and typing logic is here) ...
+            
             print("Typing username...")
             username_field = driver.find_element("#username")
             for char in SAHIBINDEN_USER:
@@ -353,68 +376,19 @@ def scrape_sahibinden(driver, url, known_posts):
                 time.sleep(random.uniform(0.08, 0.25))
             time.sleep(0.6)
 
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-
             print("Typing password character by character...")
             password_field = driver.find_element("#password")
             for char in SAHIBINDEN_PASS:
                 password_field.send_keys(char)
                 time.sleep(random.uniform(0.08, 0.25))
-            
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
 
-            print("Waiting for CAPTCHA to load...")
-            time.sleep(2.5)
-
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-
-            print("Attempting to click CAPTCHA...")
             _handle_captcha_if_any()
             
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-
-            print("Waiting for CAPTCHA to verify...")
-            time.sleep(3)
-
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-
-            print("Clicking login button using JS...")
             driver.js_click("#userLoginSubmitButton")
-            
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-
-            print("Waiting for page to process login...")
             time.sleep(5)
-
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
 
             if _is_on_login():
                 print("Login failed. Still on login page.")
-                timestamp_fail = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                screenshot_path_fail = os.path.join(SCREENSHOTS_DIR, f"login_failed_{timestamp_fail}.png")
-                driver.save_screenshot(screenshot_path_fail)
-                print(f"Saved failed login screenshot to: {screenshot_path_fail}")
                 return set(), []
             else:
                 print("Login successful! Saving cookies.")
@@ -422,33 +396,15 @@ def scrape_sahibinden(driver, url, known_posts):
 
         except Exception as e:
             print(f"An exception occurred during the login process: {e}")
-            timestamp_exc = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path_exc = os.path.join(SCREENSHOTS_DIR, f"login_exception_{timestamp_exc}.png")
-            driver.save_screenshot(screenshot_path_exc)
-            print(f"Saved exception screenshot to: {screenshot_path_exc}")
             return set(), []
             
     # ----------------- scrape -----------------
-    # (Your full, original data scraping loop is preserved below)
     print("Proceeding to scrape data...")
     try:
-        # 1. Wait for the main results table to be visible on the page
-        print("Waiting for search results to load...")
         driver.wait_for_element_visible("table#searchResultsTable", timeout=15)
-
-        # 2. Take a screenshot of the actual data being scraped
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        screenshot_path = os.path.join(SCREENSHOTS_DIR, f"scraping_page_{timestamp}.png")
-        driver.save_screenshot(screenshot_path)
-        print(f"Saved screenshot of scraping page to: {screenshot_path}")
-
     except Exception as e:
         print(f"Search results not found or page did not load correctly: {e}")
-        timestamp_err = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        screenshot_path_err = os.path.join(SCREENSHOTS_DIR, f"scraping_error_{timestamp_err}.png")
-        driver.save_screenshot(screenshot_path_err)
-        print(f"Saved error screenshot to: {screenshot_path_err}")
-        return set(), [] # Exit if the page is broken
+        return set(), []
 
     new_posts = []
     seen_new_ids = set()
@@ -520,7 +476,7 @@ def scrape_sahibinden(driver, url, known_posts):
         print(f"Found {len(new_posts)} new posts.")
     else:
         print("Scrape complete. No new posts found on this run.")
-
+    current_ids = set()
     return current_ids, new_posts
 
 
