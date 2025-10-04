@@ -383,25 +383,22 @@ def scrape_sahibinden(driver, url, known_posts):
 
                 price = post.find_element('css selector', '.searchResultsPriceValue span').text.strip()
                 href = title_el.get_attribute('href')
+                
+                # --- CORRECTED BRAND/SERIE PARSING ---
                 parsed = urlparse(href or '')
                 segments = [seg for seg in (parsed.path or '').split('/') if seg]
+                
+                # This line filters out all the filler words from the URL
+                car_info_segments = [seg for seg in segments if seg not in IGNORE_WORDS]
 
-                try:
-                    # This finds the brand by filtering out the filler words
-                    car_info_segments = [seg for seg in segments if seg not in IGNORE_WORDS]
+                brand = ''
+                serie = ''
 
-                    brand = ''
-                    serie = ''
-
-                    if len(car_info_segments) > 0:
-                        brand = car_info_segments[0].replace('-', ' ').strip().title()
-                    if len(car_info_segments) > 1:
-                        serie = car_info_segments[1].replace('-', ' ').strip().title()
-
-                except Exception as e:
-                    print(f"Could not parse brand/serie from URL segments: {segments}. Error: {e}")
-                    brand = ''
-                    serie = ''
+                if len(car_info_segments) > 0:
+                    brand = car_info_segments[0].replace('-', ' ').strip().title()
+                if len(car_info_segments) > 1:
+                    serie = car_info_segments[1].replace('-', ' ').strip().title()
+                # --- END OF CORRECTION ---
 
                 def _attr_texts(elem):
                     try:
