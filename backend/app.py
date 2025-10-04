@@ -93,91 +93,34 @@ def _add_cookies_for_host(driver, host_url: str, cookies: list):
             print("cookie add failed:", cookie.get("name"), e)
 
 def _prime_anon_cookies(driver):
-    """Optional: preload logged-OUT cookies so we don't get bounced to login."""
-    try:
-        txt_env = os.getenv("ANON_COOKIES_TXT", "")
-        json_env = os.getenv("ANON_COOKIES_JSON", "")
-        cookies = []
-        if txt_env.strip():
-            print("Priming cookies from ANON_COOKIES_TXT ...")
-            cookies = _parse_netscape_cookies_txt(txt_env)
-        elif json_env.strip():
-            print("Priming cookies from ANON_COOKIES_JSON ...")
-            import json as _json
-            arr = _json.loads(json_env)
-            for c in arr:
-                d = {
-                    "name": c["name"],
-                    "value": c["value"],
-                    "path": c.get("path", "/"),
-                    "secure": c.get("secure", False),
-                }
-                if "domain" in c and str(c["domain"]).startswith("."):
-                    d["domain"] = c["domain"]
-                    d["_host_hint"] = c["domain"].lstrip(".")
-                else:
-                    d["_host_hint"] = (c.get("domain") or "www.sahibinden.com").lstrip(".")
-                if "expiry" in c:
-                    d["expiry"] = c["expiry"]
-                cookies.append(d)
-        else:
-            fp = os.path.join(os.path.dirname(__file__), "cookies.txt")
-            if os.path.exists(fp):
-                print("Priming cookies from local cookies.txt ...")
-                with open(fp, "r", encoding="utf-8") as f:
-                    cookies = _parse_netscape_cookies_txt(f.read())
+    """
+    If SESSION_COOKIES_JSON is provided, use it to establish an initial session.
+    This helps bypass initial bot checks before navigating to the target URL.
+    """
+    SESSION_COOKIES_JSON = os.getenv("SESSION_COOKIES_JSON")
+    if not SESSION_COOKIES_JSON:
+        print("No session cookies provided. Proceeding with a fresh session.")
+        return
 
-        if cookies:
-            _add_cookies_for_host(driver, "https://www.sahibinden.com/", cookies)
-            _add_cookies_for_host(driver, "https://sahibinden.com/", cookies)
-            driver.get("https://www.sahibinden.com/")
-            time.sleep(1)
-        else:
-            print("No anon cookies provided.")
-    except Exception as e:
-        print("cookie priming failed:", e)
-
-def _load_saved_session_cookies(driver):
-    """Load previously saved (logged-in) cookies, if any."""
+    print("Found SESSION_COOKIES_JSON. Attempting to prime session...")
     try:
-        if not os.path.exists(SESSION_COOKIE_FILE):
-            return False
-        import json as _json
-        with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as f:
-            arr = _json.load(f)
-        if not arr:
-            return False
-        # Normalize & route via our adder
-        cookies = []
-        for c in arr:
-            d = { "name": c["name"], "value": c["value"], "path": c.get("path","/"), "secure": c.get("secure", False) }
-            dom = c.get("domain")
-            if dom and str(dom).startswith("."):
-                d["domain"] = dom
-                d["_host_hint"] = dom.lstrip(".")
-            else:
-                d["_host_hint"] = (dom or "www.sahibinden.com").lstrip(".")
-            if "expiry" in c:
-                d["expiry"] = c["expiry"]
-            cookies.append(d)
-        _add_cookies_for_host(driver, "https://www.sahibinden.com/", cookies)
+        cookies = json.loads(SESSION_COOKIES_JSON)
+        # Go to the site's domain to set the cookies
         driver.get("https://www.sahibinden.com/")
-        time.sleep(0.8)
-        return True
-    except Exception as e:
-        print("load session cookies failed:", e)
-        return False
+        
+        for cookie in cookies:
+            # Clean the cookie to a format the driver accepts
+            clean_cookie = {k: v for k, v in cookie.items() if k in ["name", "value", "domain", "path", "secure", "expiry"]}
+            if 'expirationDate' in cookie and 'expiry' not in clean_cookie:
+                clean_cookie['expiry'] = int(cookie['expirationDate'])
+            driver.add_cookie(clean_cookie)
+            
+        print(f"Successfully primed session with {len(cookies)} cookies.")
+        driver.get("https://www.sahibinden.com/") # Refresh the page to apply the session
+        time.sleep(1)
 
-def _save_current_cookies(driver):
-    """Persist current cookies so we don't have to re-login next time."""
-    try:
-        import json as _json
-        arr = driver.get_cookies()
-        with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
-            _json.dump(arr, f)
-        print(f"Saved session cookies to {SESSION_COOKIE_FILE}")
     except Exception as e:
-        print("save cookies failed:", e)
+        print(f"Could not prime session from SESSION_COOKIES_JSON: {e}")
 
 
 def send_push_notification(title, body, data={}):
