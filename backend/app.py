@@ -340,7 +340,10 @@ def scrape_sahibinden(driver, url, known_posts):
             print(f"Saved initial login page screenshot to: {screenshot_path}")
 
             print("Typing username...")
-            driver.type("#username", SAHIBINDEN_USER)
+            username_field = driver.find_element("#username")
+            for char in SAHIBINDEN_USER:
+                username_field.send_keys(char)
+                time.sleep(random.uniform(0.08, 0.25))
             time.sleep(0.6)
 
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
