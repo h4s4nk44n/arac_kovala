@@ -362,6 +362,7 @@ def scrape_sahibinden(driver, url, known_posts):
     seen_new_ids = set()
     post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
+    IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay'}
      # 3. Add a log message if no posts are found
     if not post_elements:
         print("No ad listings found on the page.")
@@ -383,35 +384,30 @@ def scrape_sahibinden(driver, url, known_posts):
                 price = post.find_element('css selector', '.searchResultsPriceValue span').text.strip()
                 href = title_el.get_attribute('href')
                 
-                # --- CORRECTED BRAND/SERIE PARSING ---
+                # --- START OF NEW, CORRECTED LOGIC ---
                 parsed = urlparse(href or '')
-                segments = [seg for seg in (parsed.path or '').split('/') if seg]
+                raw_segments = [seg for seg in (parsed.path or '').split('/') if seg]
                 
-                # --- START OF CORRECTED LOGIC ---
+                # First, filter out any complete segments that are filler words (like 'ilan', 'detay')
+                filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS]
+                
+                # Now, join the remaining segments and split them by '-', then filter again
+                # This correctly handles both separate segments and combined slugs
+                all_words = '-'.join(filtered_segments).split('-')
+                car_info_parts = [part for part in all_words if part not in IGNORE_WORDS]
 
-                # Define the main categories to look for
-                CATEGORIES = ['otomobil', 'arazi-suv-pickup']
-                
-                # Find the index of the last category segment in the URL
-                last_cat_index = -1
-                for i, segment in enumerate(segments):
-                    for cat in CATEGORIES:
-                        if cat in segment:
-                            last_cat_index = i
-                
                 brand = ''
                 serie = ''
 
-                # The brand and serie are the segments immediately after the category
-                if last_cat_index != -1:
-                    if len(segments) > last_cat_index + 1:
-                        # This handles cases like /otomobil/mercedes-benz
-                        brand = segments[last_cat_index + 1].replace('-', ' ').strip().title()
-                    if len(segments) > last_cat_index + 2:
-                        # This handles cases like /otomobil/mercedes-benz/c-serisi
-                        serie = segments[last_cat_index + 2].replace('-', ' ').strip().title()
+                # Find the first real car part (the brand)
+                if len(car_info_parts) > 0:
+                    brand = car_info_parts[0].replace('-', ' ').strip().title()
+                # Find the second real car part (the series)
+                if len(car_info_parts) > 1:
+                    serie = car_info_parts[1].replace('-', ' ').strip().title()
+                # --- END OF NEW, CORRECTED LOGIC ---
 
-                # --- END OF CORRECTED LOGIC ---
+                
                 print(f"brand : {brand}, serie : {serie}")
                 def _attr_texts(elem):
                     try:
