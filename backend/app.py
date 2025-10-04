@@ -362,7 +362,7 @@ def scrape_sahibinden(driver, url, known_posts):
     seen_new_ids = set()
     post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
-
+    IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup'}
      # 3. Add a log message if no posts are found
     if not post_elements:
         print("No ad listings found on the page.")
@@ -386,26 +386,22 @@ def scrape_sahibinden(driver, url, known_posts):
                 parsed = urlparse(href or '')
                 segments = [seg for seg in (parsed.path or '').split('/') if seg]
 
-                # NEW: find category index and take brand/serie after it
-                brand = ''
-                serie = ''
                 try:
-                    cat_indices = []
-                    for cat in ('otomobil', 'arazi-suv-pickup'):
-                        if cat in segments:
-                            cat_indices.append(segments.index(cat))
-                    if cat_indices:
-                        cat_idx = min(cat_indices)
-                        if len(segments) > cat_idx + 1:
-                            brand = segments[cat_idx + 1].replace('-', ' ').strip().title()
-                        if len(segments) > cat_idx + 2:
-                            serie = segments[cat_idx + 2].replace('-', ' ').strip().title()
-                    else:
-                        # Fallback: old method if category not found
-                        if len(segments) > 0: brand = segments[0].replace('-', ' ').strip().title()
-                        if len(segments) > 1: serie = segments[1].replace('-', ' ').strip().title()
-                except Exception:
-                    pass
+                    # This finds the brand by filtering out the filler words
+                    car_info_segments = [seg for seg in segments if seg not in IGNORE_WORDS]
+
+                    brand = ''
+                    serie = ''
+
+                    if len(car_info_segments) > 0:
+                        brand = car_info_segments[0].replace('-', ' ').strip().title()
+                    if len(car_info_segments) > 1:
+                        serie = car_info_segments[1].replace('-', ' ').strip().title()
+
+                except Exception as e:
+                    print(f"Could not parse brand/serie from URL segments: {segments}. Error: {e}")
+                    brand = ''
+                    serie = ''
 
                 def _attr_texts(elem):
                     try:
