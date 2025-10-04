@@ -1,32 +1,37 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "Arac Kovala",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.k44n51.frontend",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.k44n51.frontend"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiBase": "https://arackovala-production.up.railway.app",
+      "apiBase": "https://arackovala-production-1218.up.railway.app/",
       "eas": {
         "projectId": "7db31db4-91d2-4ca5-ab01-b02c50fa56a2"
       }

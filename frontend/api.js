@@ -13,11 +13,11 @@ function computeCandidates() {
   const debuggerHost = expo?.hostUri || expo?.debuggerHost;
   if (debuggerHost) {
     const host = debuggerHost.split(':')[0];
-    candidates.push(`http://${host}:3000`);
+    candidates.push(`http://${host}:8080`);
   }
 
-  if (Platform.OS === 'android') candidates.push('http://10.0.2.2:3000');
-  candidates.push('http://127.0.0.1:3000');
+  if (Platform.OS === 'android') candidates.push('http://10.0.2.2:8080');
+  candidates.push('http://127.0.0.1:8080');
 
   return Array.from(new Set(candidates));
 }
@@ -36,7 +36,7 @@ async function getBaseUrl() {
       // try next candidate
     }
   }
-  cachedBaseUrl = candidates[0] || (Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://127.0.0.1:3000');
+  cachedBaseUrl = candidates[0] || (Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://127.0.0.1:8080');
   return cachedBaseUrl;
 }
 

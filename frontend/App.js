@@ -569,7 +569,7 @@ function FeedScreen() {
                   <View style={styles.thumb} />
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.sectionTitle}>{item.brand} {item.serie} {item.model}</Text>
+                  <Text style={styles.sectionTitle}>{item.title || `${item.brand} ${item.model} ${item.serie}`}</Text>
                   <Text style={styles.resultText}>
                     {item.price} · {item.year} · {(typeof item.km === 'number' ? item.km.toLocaleString('tr-TR') : String(item.km || ''))} km
                   </Text>
