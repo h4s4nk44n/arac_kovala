@@ -244,33 +244,53 @@ def scrape_sahibinden(driver, url, known_posts):
     # --- NEW: PRIMARY LOGIN STRATEGY USING COOKIES ---
     if SESSION_COOKIES_JSON:
         print("Attempting to load session from SESSION_COOKIES_JSON...")
+        cookies_loaded_successfully = False
         try:
-            # 1. Go to the base domain FIRST. This is the crucial step.
+            # 1. Go to the base domain FIRST.
             driver.get("https://www.sahibinden.com/")
             _accept_cookie_banner_if_any()
 
             cookies = json.loads(SESSION_COOKIES_JSON)
+            loaded_count = 0
             
-            # 2. Add cookies one by one to the current domain
+            # 2. Add cookies one by one, skipping any that cause an error.
             for cookie in cookies:
-                # The browser requires a specific format. We remove extra keys.
-                clean_cookie = {k: v for k, v in cookie.items() if k in ["name", "value", "domain", "path", "secure"]}
-                if 'expirationDate' in cookie:
-                    clean_cookie['expiry'] = int(cookie['expirationDate'])
-                
-                driver.add_cookie(clean_cookie)
-                
-            print(f"Successfully loaded {len(cookies)} cookies.")
+                try:
+                    # Clean the cookie to a format the driver accepts
+                    clean_cookie = {
+                        "name": cookie["name"],
+                        "value": cookie["value"],
+                        "domain": cookie["domain"],
+                    }
+                    if "path" in cookie: clean_cookie["path"] = cookie["path"]
+                    if "secure" in cookie: clean_cookie["secure"] = cookie["secure"]
+                    if "expiry" in cookie: clean_cookie["expiry"] = cookie["expiry"]
+                    elif "expirationDate" in cookie: clean_cookie["expiry"] = int(cookie["expirationDate"])
+
+                    driver.add_cookie(clean_cookie)
+                    loaded_count += 1
+                except Exception as e:
+                    print(f"Warning: Could not add cookie '{cookie.get('name')}'. Reason: {e}")
             
+            if loaded_count > 0:
+                print(f"Successfully loaded {loaded_count}/{len(cookies)} cookies.")
+                cookies_loaded_successfully = True
+
             # 3. Navigate to the final target URL with the active session
+            print("Navigating to target URL with session...")
             driver.get(url)
             _accept_cookie_banner_if_any()
             time.sleep(2)
 
         except Exception as e:
-            print(f"Cookie loading failed: {e}. Falling back to standard login.")
+            print(f"A critical error occurred during cookie loading: {e}. Falling back to standard login.")
             driver.uc_open_with_reconnect(url, 4)
             _accept_cookie_banner_if_any()
+            
+        if not cookies_loaded_successfully:
+            driver.uc_open_with_reconnect(url, 4)
+            _accept_cookie_banner_if_any()
+
     else:
         # Navigate normally if no cookies are provided
         driver.uc_open_with_reconnect(url, 4)
