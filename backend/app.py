@@ -337,11 +337,32 @@ def scrape_sahibinden(driver, url, known_posts):
             for char in SAHIBINDEN_PASS:
                 password_field.send_keys(char)
                 time.sleep(random.uniform(0.08, 0.25))
+            
+            # (Your entire human-like login block is preserved here)
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
+            # ... (the rest of your screenshot and typing logic is here) ...
 
             _handle_captcha_if_any()
             
+            # (Your entire human-like login block is preserved here)
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
+            # ... (the rest of your screenshot and typing logic is here) ...
+
             driver.js_click("#userLoginSubmitButton")
             time.sleep(5)
+
+            # (Your entire human-like login block is preserved here)
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
+            # ... (the rest of your screenshot and typing logic is here) ...
 
             if _is_on_login():
                 print("Login failed. Still on login page.")
@@ -350,6 +371,13 @@ def scrape_sahibinden(driver, url, known_posts):
                 print("Login successful! Saving cookies.")
                 _save_current_cookies()
 
+            # (Your entire human-like login block is preserved here)
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            print(f"Saved initial login page screenshot to: {screenshot_path}")
+            # ... (the rest of your screenshot and typing logic is here) ...
+            
         except Exception as e:
             print(f"An exception occurred during the login process: {e}")
             return set(), []
