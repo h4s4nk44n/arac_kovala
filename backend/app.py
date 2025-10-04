@@ -390,7 +390,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 
                 # This line filters out all the filler words from the URL
                 car_info_segments = [seg for seg in segments if seg not in IGNORE_WORDS]
-
+                print(f"title_text : {title_text}, title_el : {title_el}, model : {model}, price : {price}, href : {href}, parsed : {parsed},segments: {segments}, car_info_segments : {car_info_segments}")
                 brand = ''
                 serie = ''
 
@@ -399,7 +399,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 if len(car_info_segments) > 1:
                     serie = car_info_segments[1].replace('-', ' ').strip().title()
                 # --- END OF CORRECTION ---
-
+                print(f"brand : {brand}, serie : {serie}")
                 def _attr_texts(elem):
                     try:
                         cells = elem.find_elements('css selector', 'td.searchResultsAttributeValue')
@@ -434,6 +434,8 @@ def scrape_sahibinden(driver, url, known_posts):
                     "price": price, "url": href, "year": year_val, "km": km_val,
                     "image": saved_name,
                 })
+
+                print(f"id: {post_id}, brand: {brand}, serie: {serie}, model: {model}, price: {price}, url: {href}, year: {year_val}, km: {km_val}")
                 seen_new_ids.add(post_id)
             except Exception as e:
                 print(f"Error scraping post with ID {post_id}: {e}")
