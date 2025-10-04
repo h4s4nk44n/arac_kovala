@@ -353,7 +353,7 @@ def scrape_sahibinden(driver, url, known_posts):
     # ----------------- scrape -----------------
     print("Proceeding to scrape data...")
     try:
-        driver.wait_for_element_visible("table#searchResultsTable", timeout=15)
+        driver.wait_for_element_visible("tr.searchResultsItem", timeout=15)
     except Exception as e:
         print(f"Search results not found or page did not load correctly: {e}")
         return set(), []
