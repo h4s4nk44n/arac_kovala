@@ -587,7 +587,7 @@ def _ensure_driver():
     # We no longer need _prime_anon_cookies because the main function handles it.
     return driver, display
 
-def _scrape_loop(poll_seconds: int = 60):
+def _scrape_loop(poll_seconds: int = 6):
     print("Scraper loop started.")
     while not STOP_EVENT.is_set():
         try:
@@ -666,7 +666,7 @@ def _start_scraper_thread():
     global SCRAPER_THREAD
     if SCRAPER_THREAD and SCRAPER_THREAD.is_alive(): return
     STOP_EVENT.clear()
-    SCRAPER_THREAD = threading.Thread(target=_scrape_loop, args=(60,), daemon=True)
+    SCRAPER_THREAD = threading.Thread(target=_scrape_loop, args=(6,), daemon=True)
     SCRAPER_THREAD.start()
 
 # -------------------- API Endpoints --------------------
