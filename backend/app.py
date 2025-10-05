@@ -635,7 +635,7 @@ def _scrape_loop(poll_seconds: int = 60):
                         print(f"Found {len(new_posts)} new posts for filter '{flt.get('name')}'. List capped at 10. Sending notifications...")
                         
                         for post in new_posts:
-                            title = f"{post.get('custom_title')}"
+                            title = f"{post.get('title')}"
                             body = f"Price: {post.get('price')}"
                             send_push_notification(title, body, data={'url': post.get('url')})
                     
