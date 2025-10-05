@@ -18,8 +18,7 @@ import sys # Import sys to check the operating system
 
 import requests
 
-IMAGES_DIR = os.path.join(DATA_DIR, 'images')
-os.makedirs(IMAGES_DIR, exist_ok=True)
+
 
 PUSH_TOKENS = set()
 
@@ -34,6 +33,8 @@ PUSH_TOKENS_FILE = os.path.join(DATA_DIR, 'push_tokens.json')
 FILTERS_FILE = os.path.join(DATA_DIR, 'filters.json')
 POSTS_FILE = os.path.join(DATA_DIR, 'posts.json')
 KNOWN_IDS_FILE = os.path.join(DATA_DIR, 'known_ids.json')
+IMAGES_DIR = os.path.join(DATA_DIR, 'images')
+os.makedirs(IMAGES_DIR, exist_ok=True)
 
 
 # ---- Env / flags ----
