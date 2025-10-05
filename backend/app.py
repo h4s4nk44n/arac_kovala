@@ -18,7 +18,7 @@ import sys # Import sys to check the operating system
 
 import requests
 
-IMAGES_DIR = os.path.join(os.path.dirname(__file__), 'images')
+IMAGES_DIR = os.path.join(DATA_DIR, 'images')
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
 PUSH_TOKENS = set()
@@ -29,6 +29,8 @@ DATA_DIR = os.getenv('RAILWAY_VOLUME_MOUNT_PATH', os.path.dirname(__file__))
 print(f"Using data directory: {DATA_DIR}")
 os.makedirs(DATA_DIR, exist_ok=True) # Ensure the directory exists
 
+KNOWN_IDS_FILE = os.path.join(DATA_DIR, 'known_ids.json')
+PUSH_TOKENS_FILE = os.path.join(DATA_DIR, 'push_tokens.json')
 FILTERS_FILE = os.path.join(DATA_DIR, 'filters.json')
 POSTS_FILE = os.path.join(DATA_DIR, 'posts.json')
 KNOWN_IDS_FILE = os.path.join(DATA_DIR, 'known_ids.json')
@@ -513,7 +515,7 @@ POSTS = {}
 KNOWN_IDS = {}
 
 def _load_data_from_disk():
-    global FILTERS, POSTS, KNOWN_IDS
+    global FILTERS, POSTS, KNOWN_IDS, PUSH_TOKENS
     if os.path.exists(FILTERS_FILE):
         try:
             with open(FILTERS_FILE, 'r', encoding='utf-8') as f:
@@ -533,6 +535,15 @@ def _load_data_from_disk():
                 loaded_ids = json.load(f)
                 KNOWN_IDS = {k: set(v) for k, v in loaded_ids.items()}
         except Exception as e: print(f"Failed to read known_ids.json: {e}")
+
+    if os.path.exists(PUSH_TOKENS_FILE):
+        try:
+            with open(PUSH_TOKENS_FILE, 'r', encoding='utf-8') as f:
+                tokens_list = json.load(f)
+                PUSH_TOKENS = set(tokens_list)
+                print(f"Loaded {len(PUSH_TOKENS)} push tokens from disk.")
+        except Exception as e:
+            print(f"Failed to read push_tokens.json: {e}")
 
 def _save_data_to_disk():
     with STATE_LOCK:
@@ -753,8 +764,16 @@ def register_push_token():
     token = (request.get_json(force=True, silent=True) or {}).get('token')
     if token and isinstance(token, str):
         with STATE_LOCK:
-            print(f"Received and stored new push token starting with: {token[:10]}...")
-            PUSH_TOKENS.add(token)
+            if token not in PUSH_TOKENS:
+                print(f"Received and stored new push token starting with: {token[:10]}...")
+                PUSH_TOKENS.add(token)
+                # vvv ADD THIS BLOCK vvv
+                try:
+                    with open(PUSH_TOKENS_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(list(PUSH_TOKENS), f)
+                except Exception as e:
+                    print(f"Failed to save push tokens to disk: {e}")
+
         return jsonify({"status": "ok"})
     return jsonify({"error": "Invalid token provided."}), 400
 
