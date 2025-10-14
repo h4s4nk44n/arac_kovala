@@ -264,124 +264,48 @@ def scrape_sahibinden(driver, url, known_posts):
         except Exception as e:
             print("save cookies failed:", e)
 
-    def solve_image_captcha(driver: WebDriver):
+    def solve_captcha_automatically(driver: WebDriver):
         """
-        Solves a Google reCAPTCHA v2 challenge by switching to the audio challenge
-        and then using a browser extension's solver button.
+        Handles an automatic CAPTCHA solver by waiting for the challenge to appear
+        and then disappear.
+
+        This function assumes a browser extension is solving the CAPTCHA automatically
+        in the background without any clicks required.
 
         Args:
             driver: The Selenium WebDriver instance.
 
         Returns:
-            bool: True if the CAPTCHA was likely solved, False otherwise.
+            bool: True if the CAPTCHA was detected and then disappeared, False otherwise.
         """
-        print("Checking for an image CAPTCHA challenge...")
-        challenge_iframe = None # Define here for use in the finally block
+        print("Checking for a CAPTCHA challenge...")
         try:
-            # Check for the "unusual traffic" block message.
-            try:
-                block_message_xpath = "//*[contains(text(), 'Daha sonra tekrar deneyin') or contains(text(), 'Try again later') or contains(text(), 'traffic from your computer network')]"
-                WebDriverWait(driver, 3).until(EC.visibility_of_element_located((By.XPATH, block_message_xpath)))
-                
-                print("BOT DETECTION: 'Unusual traffic' message found. Attempting to reload the CAPTCHA.")
-                
-                try:
-                    recaptcha_iframe = WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe[src*="recaptcha"]'))
-                    )
-                    driver.switch_to.frame(recaptcha_iframe)
-                    
-                    reload_button_selector = "#recaptcha-reload-button"
-                    reload_button = WebDriverWait(driver, 5).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, reload_button_selector))
-                    )
-                    driver.execute_script("arguments[0].click();", reload_button)
-                    print("Clicked the CAPTCHA reload button.")
-                except Exception as e:
-                    print(f"Could not find or click the reload button. Error: {e}")
-                finally:
-                    driver.switch_to.default_content()
+            wait = WebDriverWait(driver, 15)  # Wait up to 15 seconds for a CAPTCHA to show up
 
-            except TimeoutException:
-                print("No initial block message detected. Looking for CAPTCHA iframe...")
-                pass
-
-            # Step 1: Wait for the image challenge iframe to become visible.
-            wait = WebDriverWait(driver, 30)
-            captcha_iframe_selector = 'iframe[title*="recaptcha challenge"]'
-            
+            # Step 1: Wait for any reCAPTCHA or hCaptcha iframe to become visible.
+            # This confirms a challenge has been presented.
+            captcha_iframe_selector = 'iframe[src*="recaptcha"], iframe[src*="hcaptcha"]'
             challenge_iframe = wait.until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, captcha_iframe_selector))
             )
-            print("Image CAPTCHA iframe detected.")
+            print("CAPTCHA detected. Waiting for automatic solver to complete...")
 
-            # Step 2: Switch INTO the iframe, click the audio button, then switch OUT.
-            driver.switch_to.frame(challenge_iframe)
-            print("Switched into CAPTCHA iframe.")
+            # Step 2: Now, wait up to 2 minutes for that same iframe to disappear.
+            # This is the "smart wait" that gives the solver the time it needs.
+            long_wait = WebDriverWait(driver, 120)
+            long_wait.until(EC.staleness_of(challenge_iframe))
             
-            audio_button = wait.until(
-                EC.element_to_be_clickable((By.ID, "recaptcha-audio-button"))
-            )
-            audio_button.click()
-            print("Clicked the audio challenge button.")
-            # some comment to push again
-            driver.switch_to.default_content()
-            print("Switched back to main page to find solver button.")
-
-
-            # Step 3: Use JavaScript to find the solver button within ANY Shadow DOM.
-            solver_button_selector = "#solver-button"
-            print(f"Searching for solver button for AUDIO challenge (incl. Shadow DOMs): '{solver_button_selector}'...")
-            # try it out
-            js_find_in_shadow = """
-                function findInShadowsRecursive(root, selector) {
-                    // Search in the current root
-                    let found = root.querySelector(selector);
-                    if (found) return found;
-
-                    // Search inside all shadow roots within the current root
-                    for (let el of root.querySelectorAll('*')) {
-                        if (el.shadowRoot) {
-                            found = findInShadowsRecursive(el.shadowRoot, selector);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                }
-                return findInShadowsRecursive(document, arguments[0]);
-            """
-            
-            solver_wait = WebDriverWait(driver, 45)
-            # Wait until the JavaScript function returns a non-null element
-            solver_button = solver_wait.until(
-                lambda d: d.execute_script(js_find_in_shadow, solver_button_selector)
-            )
-            
-            print("Solver button found. Attempting to click via JavaScript.")
-            driver.execute_script("arguments[0].click();", solver_button)
-            print("Clicked the solver button.")
-
-            # Step 4: Wait for the CAPTCHA iframe to disappear as a sign of success.
-            print("Waiting for the CAPTCHA iframe to disappear...")
-            WebDriverWait(driver, 90).until(EC.staleness_of(challenge_iframe))
-            
-            print("CAPTCHA solved successfully! The iframe has disappeared.")
+            print("CAPTCHA solved successfully! The challenge has disappeared.")
             return True
 
         except TimeoutException:
-            print("A timeout occurred. The solver button was not found in time.")
-            return False
-        except NoSuchFrameException:
-            print("Could not switch to the CAPTCHA iframe. It may have disappeared unexpectedly.")
+            # This will trigger if no CAPTCHA appears in the first 15 seconds,
+            # or if the solver takes more than 2 minutes to finish.
+            print("No CAPTCHA was detected, or the automatic solver timed out.")
             return False
         except Exception as e:
-            print(f"An unexpected error occurred while solving the image CAPTCHA: {e}")
+            print(f"An unexpected error occurred while waiting for the CAPTCHA solution: {e}")
             return False
-        finally:
-            # Step 5: CRITICAL - Always switch back to the main page context.
-            driver.switch_to.default_content()
-            print("Ensured driver context is switched back to the main page.")
-
 
     # --- NEW: PRIMARY LOGIN STRATEGY USING COOKIES ---
     if SESSION_COOKIES_JSON:

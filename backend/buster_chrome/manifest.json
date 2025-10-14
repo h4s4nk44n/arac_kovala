@@ -1,1 +1,145 @@
-{"manifest_version":3,"name":"__MSG_extensionName__","description":"__MSG_extensionDescription__","version":"3.1.0","author":"Armin Sebastian","homepage_url":"https://github.com/dessant/buster","default_locale":"en","minimum_chrome_version":"123.0","permissions":["storage","notifications","webRequest","declarativeNetRequest","webNavigation","nativeMessaging","offscreen","scripting"],"host_permissions":["<all_urls>"],"content_security_policy":{"extension_pages":"default-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data:; connect-src *; object-src 'none'; frame-ancestors http://127.0.0.1:*;"},"icons":{"16":"src/assets/icons/app/icon-16.png","19":"src/assets/icons/app/icon-19.png","24":"src/assets/icons/app/icon-24.png","32":"src/assets/icons/app/icon-32.png","38":"src/assets/icons/app/icon-38.png","48":"src/assets/icons/app/icon-48.png","64":"src/assets/icons/app/icon-64.png","96":"src/assets/icons/app/icon-96.png","128":"src/assets/icons/app/icon-128.png"},"action":{"default_icon":{"16":"src/assets/icons/app/icon-16.png","19":"src/assets/icons/app/icon-19.png","24":"src/assets/icons/app/icon-24.png","32":"src/assets/icons/app/icon-32.png","38":"src/assets/icons/app/icon-38.png","48":"src/assets/icons/app/icon-48.png","64":"src/assets/icons/app/icon-64.png","96":"src/assets/icons/app/icon-96.png","128":"src/assets/icons/app/icon-128.png"}},"options_ui":{"page":"src/options/index.html","open_in_tab":true},"background":{"service_worker":"src/background/script.js"},"content_scripts":[{"matches":["https://google.com/recaptcha/api2/bframe*","https://www.google.com/recaptcha/api2/bframe*","https://google.com/recaptcha/enterprise/bframe*","https://www.google.com/recaptcha/enterprise/bframe*","https://recaptcha.net/recaptcha/api2/bframe*","https://www.recaptcha.net/recaptcha/api2/bframe*","https://recaptcha.net/recaptcha/enterprise/bframe*","https://www.recaptcha.net/recaptcha/enterprise/bframe*"],"all_frames":true,"run_at":"document_idle","css":["src/base/style.css"],"js":["src/base/script.js"]},{"matches":["http://127.0.0.1/buster/setup?session=*"],"run_at":"document_idle","js":["src/scripts/init-setup.js"]}],"web_accessible_resources":[{"resources":["src/setup/index.html","src/scripts/reset.js","src/base/solver-button.css"],"matches":["http://*/*","https://*/*"],"use_dynamic_url":true}],"incognito":"split"}
+{
+	"name": "NopeCHA: CAPTCHA Solver",
+	"version": "0.4.13",
+	"description": "AI Solver for reCAPTCHA, FunCAPTCHA, and all CAPTCHA.",
+	"content_scripts": [
+		{
+			"matches": [
+				"*://*.google.com/recaptcha/*",
+				"*://*.recaptcha.net/recaptcha/*"
+			],
+			"js": [
+				"eventhook.js",
+				"captcha/recaptcha.js"
+			],
+			"run_at": "document_start",
+			"all_frames": true
+		},
+		{
+			"matches": [
+				"*://*.arkoselabs.com/fc/*",
+				"*://*.funcaptcha.com/fc/*",
+				"*://*/fc/assets/*"
+			],
+			"js": [
+				"captcha/funcaptcha.js"
+			],
+			"run_at": "document_end",
+			"all_frames": true
+		},
+		{
+			"matches": [
+				"*://nopecha.com/setup"
+			],
+			"js": [
+				"pages/setup.js"
+			],
+			"run_at": "document_end",
+			"all_frames": false
+		},
+		{
+			"matches": [
+				"*://nopecha.com/integrate"
+			],
+			"js": [
+				"pages/integrate.js"
+			],
+			"run_at": "document_end",
+			"all_frames": true
+		},
+		{
+			"matches": [
+				"*://nopecha.com/demo/funcaptcha",
+				"*://nopecha.com/captcha/funcaptcha"
+			],
+			"js": [
+				"pages/funcaptcha-demo.js"
+			],
+			"run_at": "document_end",
+			"all_frames": false
+		},
+		{
+			"matches": [
+				"<all_urls>"
+			],
+			"js": [
+				"captcha/awscaptcha.js",
+				"captcha/geetest.js",
+				"captcha/lemincaptcha.js",
+				"captcha/textcaptcha.js",
+				"captcha/perimeterx.js"
+			],
+			"run_at": "document_end",
+			"match_about_blank": true,
+			"all_frames": true
+		}
+	],
+	"icons": {
+		"16": "icon/16.png",
+		"32": "icon/32.png",
+		"48": "icon/48.png",
+		"128": "icon/128.png"
+	},
+	"manifest_version": 3,
+	"permissions": [
+		"declarativeNetRequest",
+		"storage",
+		"scripting"
+	],
+	"background": {
+		"service_worker": "background.js",
+		"type": "module"
+	},
+	"action": {
+		"default_title": "NopeCHA: CAPTCHA Solver",
+		"default_icon": "icon/16.png",
+		"default_popup": "popup.html"
+	},
+	"host_permissions": [
+		"<all_urls>"
+	],
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlWiyXSK0GK0nDwOfOJ2zUvRv99E2XU6LnR67zKE5RjM2icff7Cwmo6nR5i+4UukShIyEaDdQsbC+vyTpDeaJMn+bNphPYjQxGY6spIk3KV1h71Jj0dSUOYUwGrViKg3LnC4LKtENYOsbIxTmMw8JG4oH1hU1tY4KlnSzcqiwTaDLTP0X7MVdDK0WPOyypNlkL7v1HWMjPZa32EudqcrWub/EMpMFuSugTyIu8dHaAQhW13RkU77BiMRoZfZYxbcED48YPmZS8qi3KOrymjOTWCJeDMjwy/MLCqrwhjoG1Y5jDXHFbxNUPxEJYw9mxxPTN+asraML9tywlLuzZluHwwIDAQAB",
+	"minimum_chrome_version": "100.0",
+	"version_name": "v0.4.13",
+	"nopecha": {
+		"key": "",
+		"keys": [],
+		"enabled": true,
+		"disabled_hosts": [],
+		"awscaptcha_auto_open": false,
+		"awscaptcha_auto_solve": false,
+		"awscaptcha_solve_delay_time": 1000,
+		"awscaptcha_solve_delay": true,
+		"geetest_auto_open": false,
+		"geetest_auto_solve": false,
+		"geetest_solve_delay_time": 1000,
+		"geetest_solve_delay": true,
+		"funcaptcha_auto_open": true,
+		"funcaptcha_auto_solve": true,
+		"funcaptcha_solve_delay_time": 1000,
+		"funcaptcha_solve_delay": true,
+		"hcaptcha_auto_open": true,
+		"hcaptcha_auto_solve": true,
+		"hcaptcha_solve_delay_time": 3000,
+		"hcaptcha_solve_delay": true,
+		"lemincaptcha_auto_open": false,
+		"lemincaptcha_auto_solve": false,
+		"lemincaptcha_solve_delay_time": 1000,
+		"lemincaptcha_solve_delay": true,
+		"perimeterx_auto_solve": false,
+		"perimeterx_solve_delay_time": 1000,
+		"perimeterx_solve_delay": true,
+		"recaptcha_auto_open": true,
+		"recaptcha_auto_solve": true,
+		"recaptcha_solve_delay_time": 2000,
+		"recaptcha_solve_delay": true,
+		"textcaptcha_auto_solve": false,
+		"textcaptcha_image_selector": "",
+		"textcaptcha_input_selector": "",
+		"textcaptcha_solve_delay_time": 100,
+		"textcaptcha_solve_delay": true,
+		"turnstile_auto_solve": true,
+		"turnstile_solve_delay_time": 1000,
+		"turnstile_solve_delay": true
+	}
+}
