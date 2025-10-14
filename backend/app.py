@@ -426,7 +426,7 @@ def scrape_sahibinden(driver, url, known_posts):
             except Exception as e:
                 print(f"Could not save HTML snapshot. Error: {e}")
 
-            solve_image_captcha(driver)
+            solve_captcha_automatically(driver)
 
             # (Your entire human-like login block is preserved here)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
