@@ -28,6 +28,7 @@ import requests
 PUSH_TOKENS = set()
 
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
+HTML_SNAPSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'html_snapshots')
 
 DATA_DIR = os.getenv('RAILWAY_VOLUME_MOUNT_PATH', os.path.dirname(__file__))
 print(f"Using data directory: {DATA_DIR}")
@@ -336,7 +337,7 @@ def scrape_sahibinden(driver, url, known_posts):
             print(f"Waiting for solver button: '{solver_button_selector}'...")
             
             try:
-                snapshots_dir = os.path.join(os.path.dirname(__file__), 'screenshots')
+                snapshots_dir = os.path.join(os.path.dirname(__file__), 'html_snapshots')
                 os.makedirs(snapshots_dir, exist_ok=True)
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 filepath = os.path.join(snapshots_dir, f"captcha_iframe_{timestamp}.html")
@@ -907,6 +908,14 @@ def list_screenshots():
         reverse=True
     )
     return jsonify(files)
+
+@app.get('/html_snapshots/<path:filename>')
+def serve_html_snapshot(filename):
+    """Serves a specific HTML snapshot file."""
+    try:
+        return send_from_directory(HTML_SNAPSHOTS_DIR, filename)
+    except FileNotFoundError:
+        abort(404)
 
 @app.get('/screenshots/<path:filename>')
 def serve_screenshot(filename):
