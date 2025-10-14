@@ -318,7 +318,7 @@ def scrape_sahibinden(driver, url, known_posts):
 
             # Step 1: Wait for the image challenge iframe to become visible.
             # This part will now run after a potential reload attempt.
-            wait = WebDriverWait(driver, 15)
+            wait = WebDriverWait(driver, 30)
             captcha_iframe_selector = 'iframe[title*="recaptcha challenge"]'
             
             challenge_iframe = wait.until(
