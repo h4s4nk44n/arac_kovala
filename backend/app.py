@@ -489,6 +489,18 @@ def scrape_sahibinden(driver, url, known_posts):
             print(f"Saved initial login page screenshot to: {screenshot_path}")
             # ... (the rest of your screenshot and typing logic is here) ...
 
+            try:
+                snapshots_dir = os.path.join(os.path.dirname(__file__), 'html_snapshots')
+                os.makedirs(snapshots_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                filepath = os.path.join(snapshots_dir, f"captcha_iframe_{timestamp}.html")
+                driver.save_screenshot(filepath)
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(driver.page_source)
+                print(f"Saved iframe HTML for debugging to: {filepath}")
+            except Exception as e:
+                print(f"Could not save HTML snapshot. Error: {e}")
+
             solve_image_captcha(driver)
 
             # (Your entire human-like login block is preserved here)
