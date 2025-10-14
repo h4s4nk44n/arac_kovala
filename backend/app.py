@@ -335,6 +335,17 @@ def scrape_sahibinden(driver, url, known_posts):
             solver_button_selector = "#solver-button"
             print(f"Waiting for solver button: '{solver_button_selector}'...")
             
+            try:
+                snapshots_dir = os.path.join(os.path.dirname(__file__), 'html_snapshots')
+                os.makedirs(snapshots_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                filepath = os.path.join(snapshots_dir, f"captcha_iframe_{timestamp}.html")
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(driver.page_source)
+                print(f"Saved iframe HTML for debugging to: {filepath}")
+            except Exception as e:
+                print(f"Could not save HTML snapshot. Error: {e}")
+
             # Use WebDriverWait to ensure the button is ready to be clicked.
             wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, solver_button_selector)))
             
