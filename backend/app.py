@@ -266,11 +266,11 @@ def scrape_sahibinden(driver, url, known_posts):
 
     def solve_image_captcha(driver: WebDriver):
         """
-        Detects and solves a Google reCAPTCHA v2 image challenge by clicking a
-        browser extension's solver button, searching within the Shadow DOM.
+        Solves a Google reCAPTCHA v2 challenge by switching to the audio challenge
+        and then using a browser extension's solver button.
 
         Args:
-            driver: The Selsenium WebDriver instance.
+            driver: The Selenium WebDriver instance.
 
         Returns:
             bool: True if the CAPTCHA was likely solved, False otherwise.
@@ -315,29 +315,40 @@ def scrape_sahibinden(driver, url, known_posts):
             )
             print("Image CAPTCHA iframe detected.")
 
-            # Step 2: Switch context back to the main page BEFORE searching for the button.
-            # The solver button exists on the main page, not inside the iframe.
-            # No driver action is needed here, we just need to confirm we are on the default content.
+            # Step 2: Switch INTO the iframe, click the audio button, then switch OUT.
+            driver.switch_to.frame(challenge_iframe)
+            print("Switched into CAPTCHA iframe.")
+            
+            audio_button = wait.until(
+                EC.element_to_be_clickable((By.ID, "recaptcha-audio-button"))
+            )
+            audio_button.click()
+            print("Clicked the audio challenge button.")
+            
             driver.switch_to.default_content()
-            print("Ensured driver context is on the main page.")
+            print("Switched back to main page to find solver button.")
+
 
             # Step 3: Use JavaScript to find the solver button within ANY Shadow DOM.
             solver_button_selector = "#solver-button"
-            print(f"Searching for solver button (incl. Shadow DOMs): '{solver_button_selector}'...")
+            print(f"Searching for solver button for AUDIO challenge (incl. Shadow DOMs): '{solver_button_selector}'...")
 
             js_find_in_shadow = """
-                function findInShadows(selector) {
-                    // Search all elements for shadow roots
-                    for (let el of document.querySelectorAll('*')) {
+                function findInShadowsRecursive(root, selector) {
+                    // Search in the current root
+                    let found = root.querySelector(selector);
+                    if (found) return found;
+
+                    // Search inside all shadow roots within the current root
+                    for (let el of root.querySelectorAll('*')) {
                         if (el.shadowRoot) {
-                            const found = el.shadowRoot.querySelector(selector);
+                            found = findInShadowsRecursive(el.shadowRoot, selector);
                             if (found) return found;
                         }
                     }
-                    // Fallback to searching the main document
-                    return document.querySelector(selector);
+                    return null;
                 }
-                return findInShadows(arguments[0]);
+                return findInShadowsRecursive(document, arguments[0]);
             """
             
             solver_wait = WebDriverWait(driver, 45)
