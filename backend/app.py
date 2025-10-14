@@ -267,10 +267,7 @@ def scrape_sahibinden(driver, url, known_posts):
     def solve_image_captcha(driver: WebDriver):
         """
         Detects and solves a Google reCAPTCHA v2 image challenge by clicking a
-        browser extension's solver button.
-
-        This function waits for the CAPTCHA iframe to appear, switches into it,
-        clicks the solver button, and waits for the CAPTCHA to be resolved.
+        browser extension's solver button, searching within the Shadow DOM.
 
         Args:
             driver: The Selsenium WebDriver instance.
@@ -279,6 +276,7 @@ def scrape_sahibinden(driver, url, known_posts):
             bool: True if the CAPTCHA was likely solved, False otherwise.
         """
         print("Checking for an image CAPTCHA challenge...")
+        challenge_iframe = None # Define here for use in the finally block
         try:
             # Check for the "unusual traffic" block message.
             try:
@@ -287,38 +285,28 @@ def scrape_sahibinden(driver, url, known_posts):
                 
                 print("BOT DETECTION: 'Unusual traffic' message found. Attempting to reload the CAPTCHA.")
                 
-                # The reload button is inside the main reCAPTCHA iframe.
                 try:
-                    # Find the iframe containing the CAPTCHA controls.
                     recaptcha_iframe = WebDriverWait(driver, 5).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe[src*="recaptcha"]'))
                     )
                     driver.switch_to.frame(recaptcha_iframe)
                     
-                    # Find and click the reload button to get a new challenge.
                     reload_button_selector = "#recaptcha-reload-button"
                     reload_button = WebDriverWait(driver, 5).until(
                         EC.element_to_be_clickable((By.CSS_SELECTOR, reload_button_selector))
                     )
-                    
-                    # Use a JavaScript click as it's highly reliable within iframes.
                     driver.execute_script("arguments[0].click();", reload_button)
-                    
                     print("Clicked the CAPTCHA reload button.")
-                    
                 except Exception as e:
-                    print(f"Could not find or click the reload button. The script may fail. Error: {e}")
+                    print(f"Could not find or click the reload button. Error: {e}")
                 finally:
-                    # CRITICAL: Always switch back to the main document before proceeding.
                     driver.switch_to.default_content()
 
             except TimeoutException:
-                # This is the expected outcome if no block message is found.
                 print("No initial block message detected. Looking for CAPTCHA iframe...")
                 pass
 
             # Step 1: Wait for the image challenge iframe to become visible.
-            # This part will now run after a potential reload attempt.
             wait = WebDriverWait(driver, 30)
             captcha_iframe_selector = 'iframe[title*="recaptcha challenge"]'
             
@@ -327,40 +315,42 @@ def scrape_sahibinden(driver, url, known_posts):
             )
             print("Image CAPTCHA iframe detected.")
 
-            # Step 2: Switch the driver's context into the iframe.
-            driver.switch_to.frame(challenge_iframe)
-            print("Switched to CAPTCHA iframe context.")
-
-            # Step 3 & 4: Wait for the solver button provided by your extension and click it.
-            # This assumes your extension adds a button with the id "solver-button".
-            solver_button_selector = "#solver-button"
-            print(f"Waiting for solver button: '{solver_button_selector}'...")
-            
-            try:
-                snapshots_dir = os.path.join(os.path.dirname(__file__), 'html_snapshots')
-                os.makedirs(snapshots_dir, exist_ok=True)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                filepath = os.path.join(snapshots_dir, f"captcha_iframe_{timestamp}.html")
-                driver.save_screenshot(filepath)
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(driver.page_source)
-                print(f"Saved iframe HTML for debugging to: {filepath}")
-            except Exception as e:
-                print(f"Could not save HTML snapshot. Error: {e}")
-
-            # Use WebDriverWait to ensure the button is ready to be clicked.
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, solver_button_selector)))
-            
-            if hasattr(driver, 'uc_click'):
-                driver.uc_click(solver_button_selector)
-            else:
-                driver.find_element(By.CSS_SELECTOR, solver_button_selector).click()
-            
-            print("Clicked the solver button. Waiting for the solution...")
-
-            # Step 5: Switch back and wait for the CAPTCHA to be solved.
+            # Step 2: Switch context back to the main page BEFORE searching for the button.
+            # The solver button exists on the main page, not inside the iframe.
+            # No driver action is needed here, we just need to confirm we are on the default content.
             driver.switch_to.default_content()
+            print("Ensured driver context is on the main page.")
+
+            # Step 3: Use JavaScript to find the solver button within ANY Shadow DOM.
+            solver_button_selector = "#solver-button"
+            print(f"Searching for solver button (incl. Shadow DOMs): '{solver_button_selector}'...")
+
+            js_find_in_shadow = """
+                function findInShadows(selector) {
+                    // Search all elements for shadow roots
+                    for (let el of document.querySelectorAll('*')) {
+                        if (el.shadowRoot) {
+                            const found = el.shadowRoot.querySelector(selector);
+                            if (found) return found;
+                        }
+                    }
+                    // Fallback to searching the main document
+                    return document.querySelector(selector);
+                }
+                return findInShadows(arguments[0]);
+            """
             
+            solver_wait = WebDriverWait(driver, 45)
+            # Wait until the JavaScript function returns a non-null element
+            solver_button = solver_wait.until(
+                lambda d: d.execute_script(js_find_in_shadow, solver_button_selector)
+            )
+            
+            print("Solver button found. Attempting to click via JavaScript.")
+            driver.execute_script("arguments[0].click();", solver_button)
+            print("Clicked the solver button.")
+
+            # Step 4: Wait for the CAPTCHA iframe to disappear as a sign of success.
             print("Waiting for the CAPTCHA iframe to disappear...")
             WebDriverWait(driver, 90).until(EC.staleness_of(challenge_iframe))
             
@@ -368,7 +358,7 @@ def scrape_sahibinden(driver, url, known_posts):
             return True
 
         except TimeoutException:
-            print("A timeout occurred. The CAPTCHA may not have appeared, or the solver timed out.")
+            print("A timeout occurred. The solver button was not found in time.")
             return False
         except NoSuchFrameException:
             print("Could not switch to the CAPTCHA iframe. It may have disappeared unexpectedly.")
@@ -377,7 +367,7 @@ def scrape_sahibinden(driver, url, known_posts):
             print(f"An unexpected error occurred while solving the image CAPTCHA: {e}")
             return False
         finally:
-            # Step 6: CRITICAL - Always switch back to the main page context.
+            # Step 5: CRITICAL - Always switch back to the main page context.
             driver.switch_to.default_content()
             print("Ensured driver context is switched back to the main page.")
 
