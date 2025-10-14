@@ -332,7 +332,7 @@ def scrape_sahibinden(driver, url, known_posts):
             # Step 3: Use JavaScript to find the solver button within ANY Shadow DOM.
             solver_button_selector = "#solver-button"
             print(f"Searching for solver button for AUDIO challenge (incl. Shadow DOMs): '{solver_button_selector}'...")
-
+            # try it out
             js_find_in_shadow = """
                 function findInShadowsRecursive(root, selector) {
                     // Search in the current root
