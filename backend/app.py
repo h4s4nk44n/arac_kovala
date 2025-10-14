@@ -457,7 +457,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 time.sleep(random.uniform(0.08, 0.25))
             
 
-            _handle_captcha_if_any()
+            _handle_captcha_if_any(driver)
             
             # (Your entire human-like login block is preserved here)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
