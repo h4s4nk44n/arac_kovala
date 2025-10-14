@@ -225,28 +225,144 @@ def scrape_sahibinden(driver, url, known_posts):
         except Exception:
             pass
 
-    def _handle_captcha_if_any():
-        captcha_present = driver.is_element_visible('iframe[src*="recaptcha"]')
-        if captcha_present:
-            print("CAPTCHA detected. Attempting to click it...")
-            try:
-                driver.uc_gui_click_captcha()
-                print("Waiting for CAPTCHA to verify after click...")
-                time.sleep(3)
-            except Exception as e:
-                print(f"An error occurred while trying to click CAPTCHA: {e}")
-        else:
-            print("No CAPTCHA detected on the page. Skipping CAPTCHA click.")
+def _handle_captcha_if_any(driver):
+    try:
+        # Wait up to 5 seconds for either a reCAPTCHA or hCaptcha iframe to be visible
+        wait = WebDriverWait(driver, 5)
+        
+        # Use a more flexible CSS selector to find either type of CAPTCHA
+        # This looks for an iframe with a src containing 'recaptcha' OR 'hcaptcha'
+        captcha_iframe_selector = 'iframe[src*="recaptcha"], iframe[src*="hcaptcha"]'
+        
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, captcha_iframe_selector)))
+        
+        print("CAPTCHA detected. Attempting to click it...")
+        # Assuming you're using SeleniumBase's uc_gui_click_captcha()
+        driver.uc_gui_click_captcha() 
+        print("Waiting for CAPTCHA to verify after click...")
+        time.sleep(3)
+
+    except TimeoutException:
+        # This block will run if no CAPTCHA iframe becomes visible within 5 seconds
+        print("No CAPTCHA detected on the page. Skipping CAPTCHA click.")
+    except Exception as e:
+        print(f"An error occurred while handling CAPTCHA: {e}")
 
 
-    def _save_current_cookies():
+def _save_current_cookies():
+    try:
+        import json as _json
+        with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+            _json.dump(driver.get_cookies(), f)
+        print(f"Saved session cookies to {SESSION_COOKIE_FILE}")
+    except Exception as e:
+        print("save cookies failed:", e)
+
+def solve_image_captcha(driver: WebDriver):
+    """
+    Detects and solves a Google reCAPTCHA v2 image challenge by clicking a
+    browser extension's solver button.
+
+    This function waits for the CAPTCHA iframe to appear, switches into it,
+    clicks the solver button, and waits for the CAPTCHA to be resolved.
+
+    Args:
+        driver: The Selsenium WebDriver instance.
+
+    Returns:
+        bool: True if the CAPTCHA was likely solved, False otherwise.
+    """
+    print("Checking for an image CAPTCHA challenge...")
+    try:
+        # Check for the "unusual traffic" block message.
         try:
-            import json as _json
-            with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
-                _json.dump(driver.get_cookies(), f)
-            print(f"Saved session cookies to {SESSION_COOKIE_FILE}")
-        except Exception as e:
-            print("save cookies failed:", e)
+            block_message_xpath = "//*[contains(text(), 'Daha sonra tekrar deneyin') or contains(text(), 'Try again later') or contains(text(), 'traffic from your computer network')]"
+            WebDriverWait(driver, 3).until(EC.visibility_of_element_located((By.XPATH, block_message_xpath)))
+            
+            print("BOT DETECTION: 'Unusual traffic' message found. Attempting to reload the CAPTCHA.")
+            
+            # The reload button is inside the main reCAPTCHA iframe.
+            try:
+                # Find the iframe containing the CAPTCHA controls.
+                recaptcha_iframe = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe[src*="recaptcha"]'))
+                )
+                driver.switch_to.frame(recaptcha_iframe)
+                
+                # Find and click the reload button to get a new challenge.
+                reload_button_selector = "#recaptcha-reload-button"
+                reload_button = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, reload_button_selector))
+                )
+                
+                # Use a JavaScript click as it's highly reliable within iframes.
+                driver.execute_script("arguments[0].click();", reload_button)
+                
+                print("Clicked the CAPTCHA reload button.")
+                
+            except Exception as e:
+                print(f"Could not find or click the reload button. The script may fail. Error: {e}")
+            finally:
+                # CRITICAL: Always switch back to the main document before proceeding.
+                driver.switch_to.default_content()
+
+        except TimeoutException:
+            # This is the expected outcome if no block message is found.
+            print("No initial block message detected. Looking for CAPTCHA iframe...")
+            pass
+
+        # Step 1: Wait for the image challenge iframe to become visible.
+        # This part will now run after a potential reload attempt.
+        wait = WebDriverWait(driver, 15)
+        captcha_iframe_selector = 'iframe[title*="recaptcha challenge"]'
+        
+        challenge_iframe = wait.until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, captcha_iframe_selector))
+        )
+        print("Image CAPTCHA iframe detected.")
+
+        # Step 2: Switch the driver's context into the iframe.
+        driver.switch_to.frame(challenge_iframe)
+        print("Switched to CAPTCHA iframe context.")
+
+        # Step 3 & 4: Wait for the solver button provided by your extension and click it.
+        # This assumes your extension adds a button with the id "solver-button".
+        solver_button_selector = "#solver-button"
+        print(f"Waiting for solver button: '{solver_button_selector}'...")
+        
+        # Use WebDriverWait to ensure the button is ready to be clicked.
+        wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, solver_button_selector)))
+        
+        if hasattr(driver, 'uc_click'):
+            driver.uc_click(solver_button_selector)
+        else:
+            driver.find_element(By.CSS_SELECTOR, solver_button_selector).click()
+        
+        print("Clicked the solver button. Waiting for the solution...")
+
+        # Step 5: Switch back and wait for the CAPTCHA to be solved.
+        driver.switch_to.default_content()
+        
+        print("Waiting for the CAPTCHA iframe to disappear...")
+        WebDriverWait(driver, 90).until(EC.staleness_of(challenge_iframe))
+        
+        print("CAPTCHA solved successfully! The iframe has disappeared.")
+        return True
+
+    except TimeoutException:
+        print("A timeout occurred. The CAPTCHA may not have appeared, or the solver timed out.")
+        return False
+    except NoSuchFrameException:
+        print("Could not switch to the CAPTCHA iframe. It may have disappeared unexpectedly.")
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred while solving the image CAPTCHA: {e}")
+        return False
+    finally:
+        # Step 6: CRITICAL - Always switch back to the main page context.
+        driver.switch_to.default_content()
+        print("Ensured driver context is switched back to the main page.")
+
 
     # --- NEW: PRIMARY LOGIN STRATEGY USING COOKIES ---
     if SESSION_COOKIES_JSON:
@@ -321,12 +437,6 @@ def scrape_sahibinden(driver, url, known_posts):
         meta["last"] = now
         
         try:
-            # (Your entire human-like login block is preserved here)
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-            # ... (the rest of your screenshot and typing logic is here) ...
             
             print("Typing username...")
             username_field = driver.find_element("#username")
@@ -341,12 +451,6 @@ def scrape_sahibinden(driver, url, known_posts):
                 password_field.send_keys(char)
                 time.sleep(random.uniform(0.08, 0.25))
             
-            # (Your entire human-like login block is preserved here)
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-            # ... (the rest of your screenshot and typing logic is here) ...
 
             _handle_captcha_if_any()
             
@@ -357,7 +461,7 @@ def scrape_sahibinden(driver, url, known_posts):
             print(f"Saved initial login page screenshot to: {screenshot_path}")
             # ... (the rest of your screenshot and typing logic is here) ...
 
-            driver.js_click("#userLoginSubmitButton")
+            driver.uc_click("#userLoginSubmitButton")
             time.sleep(5)
 
             # (Your entire human-like login block is preserved here)
@@ -367,12 +471,7 @@ def scrape_sahibinden(driver, url, known_posts):
             print(f"Saved initial login page screenshot to: {screenshot_path}")
             # ... (the rest of your screenshot and typing logic is here) ...
 
-            if _is_on_login():
-                print("Login failed. Still on login page.")
-                return set(), []
-            else:
-                print("Login successful! Saving cookies.")
-                _save_current_cookies()
+            solve_image_captcha(driver)
 
             # (Your entire human-like login block is preserved here)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -380,7 +479,8 @@ def scrape_sahibinden(driver, url, known_posts):
             driver.save_screenshot(screenshot_path)
             print(f"Saved initial login page screenshot to: {screenshot_path}")
             # ... (the rest of your screenshot and typing logic is here) ...
-            
+
+
         except Exception as e:
             print(f"An exception occurred during the login process: {e}")
             return set(), []
@@ -582,7 +682,8 @@ def _ensure_driver():
                "Chrome/141.0.0.0 Safari/537.36"),
         locale_code="tr-TR",
         window_size="1366,768",
-        proxy=proxy_string if proxy_string else None
+        proxy=proxy_string if proxy_string else None,
+        extension_dir = "buster_chrome"
     )
 
     driver.execute_cdp_cmd(
