@@ -50,7 +50,8 @@ def _env_true(name: str, default="0"):
 ALLOW_LOGIN = _env_true("ALLOW_LOGIN", "1")  # you said it must log in when needed
 MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))  # per process lifetime
 LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))  # 5 sec cooldown
-SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", "/app/session_cookies.json")
+# Persist session cookies on the data volume by default
+SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", os.path.join(DATA_DIR, "session_cookies.json"))
 
 
 def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"):
@@ -105,6 +106,33 @@ def _add_cookies_for_host(sb, host_url: str, cookies: list):
         except Exception as e:
             print("cookie add failed:", cookie.get("name"), e)
 
+
+def _prepare_cookies(cookies_raw):
+    """Normalize a list of cookie dicts into the format sb.add_cookie expects.
+    Adds a helper _host_hint for host-only routing.
+    """
+    prepared = []
+    for cookie in cookies_raw or []:
+        try:
+            clean_cookie = {"name": cookie.get("name"), "value": cookie.get("value")}
+            if cookie.get("path"): clean_cookie["path"] = cookie["path"]
+            if "secure" in cookie: clean_cookie["secure"] = bool(cookie.get("secure"))
+            if "expiry" in cookie and isinstance(cookie["expiry"], (int, float)):
+                clean_cookie["expiry"] = int(cookie["expiry"])
+            elif "expirationDate" in cookie:
+                exp = cookie.get("expirationDate")
+                if isinstance(exp, (int, float)):
+                    clean_cookie["expiry"] = int(exp)
+            domain_val = cookie.get("domain")
+            host_hint = ""
+            if isinstance(domain_val, str) and domain_val:
+                clean_cookie["domain"] = domain_val
+                host_hint = domain_val.lstrip(".")
+            clean_cookie["_host_hint"] = host_hint
+            prepared.append(clean_cookie)
+        except Exception:
+            continue
+    return prepared
 
 def _prime_anon_cookies(sb):
     """
@@ -530,6 +558,7 @@ def scrape_sahibinden(sb, url, known_posts):
                 pass
             return False
 
+    # 1) Try in-memory env cookies (useful for Railway secret injection)
     if SESSION_COOKIES_JSON:
         print("Attempting to load session from SESSION_COOKIES_JSON...")
         cookies_loaded_successfully = False
@@ -537,28 +566,7 @@ def scrape_sahibinden(sb, url, known_posts):
             sb.get("https://www.sahibinden.com/")
             _accept_cookie_banner_if_any()
             cookies_raw = json.loads(SESSION_COOKIES_JSON)
-            prepared = []
-            for cookie in cookies_raw:
-                try:
-                    clean_cookie = { "name": cookie.get("name"), "value": cookie.get("value") }
-                    if cookie.get("path"): clean_cookie["path"] = cookie["path"]
-                    if "secure" in cookie: clean_cookie["secure"] = bool(cookie.get("secure"))
-                    # Normalize expiry
-                    if "expiry" in cookie and isinstance(cookie["expiry"], (int, float)):
-                        clean_cookie["expiry"] = int(cookie["expiry"])
-                    elif "expirationDate" in cookie:
-                        exp = cookie.get("expirationDate")
-                        if isinstance(exp, (int, float)):
-                            clean_cookie["expiry"] = int(exp)
-                    domain_val = cookie.get("domain")
-                    host_hint = ""
-                    if isinstance(domain_val, str) and domain_val:
-                        clean_cookie["domain"] = domain_val
-                        host_hint = domain_val.lstrip(".")
-                    clean_cookie["_host_hint"] = host_hint
-                    prepared.append(clean_cookie)
-                except Exception as e:
-                    print(f"Warning: Could not prepare cookie '{cookie.get('name')}': {e}")
+            prepared = _prepare_cookies(cookies_raw)
             # Prime cookies on relevant hosts
             hosts = [
                 "https://www.sahibinden.com/",
@@ -572,7 +580,7 @@ def scrape_sahibinden(sb, url, known_posts):
                     print("Cookie priming on host failed:", host, e)
             loaded_count = len(prepared)
             if loaded_count > 0:
-                print(f"Successfully loaded {loaded_count}/{len(cookies_raw)} cookies.")
+                print(f"Loaded {loaded_count} cookies from env variable.")
                 cookies_loaded_successfully = True
             print("Navigating to target URL with session...")
             sb.get(url)
@@ -586,8 +594,33 @@ def scrape_sahibinden(sb, url, known_posts):
             sb.uc_open_with_reconnect(url, 4)
             _accept_cookie_banner_if_any()
     else:
-        sb.uc_open_with_reconnect(url, 4)
-        _accept_cookie_banner_if_any()
+        # 2) Try persistent session file from data volume
+        cookies_loaded_successfully = False
+        if os.path.exists(SESSION_COOKIE_FILE):
+            print(f"Attempting to load session from file: {SESSION_COOKIE_FILE}")
+            try:
+                with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as f:
+                    file_cookies = json.load(f)
+                prepared = _prepare_cookies(file_cookies)
+                sb.get("https://www.sahibinden.com/")
+                _accept_cookie_banner_if_any()
+                for host in ("https://www.sahibinden.com/", "https://secure.sahibinden.com/", "https://secure2.sahibinden.com/"):
+                    try:
+                        _add_cookies_for_host(sb, host, prepared)
+                    except Exception as e:
+                        print("Cookie priming on host failed:", host, e)
+                if prepared:
+                    cookies_loaded_successfully = True
+                    print(f"Loaded {len(prepared)} cookies from session file.")
+                    sb.get(url)
+                    _accept_cookie_banner_if_any()
+                    time.sleep(1)
+            except Exception as e:
+                print("Failed loading cookies from file:", e)
+
+        if not cookies_loaded_successfully:
+            sb.uc_open_with_reconnect(url, 4)
+            _accept_cookie_banner_if_any()
 
     if _is_on_login():
         print("Redirected to login page. Attempting robust login...")
@@ -766,6 +799,28 @@ def scrape_sahibinden(sb, url, known_posts):
             else:
                 print("Login successful!")
                 _save_current_cookies()
+                # Ensure we are back on the target listing page before scraping
+                try:
+                    sb.switch_to_default_content()
+                except Exception:
+                    pass
+                try:
+                    print("Navigating back to target listing after login...")
+                    sb.uc_open_with_reconnect(url, 4)
+                except Exception:
+                    sb.get(url)
+                _accept_cookie_banner_if_any()
+                try:
+                    sb.wait_for_ready_state_complete()
+                except Exception:
+                    pass
+                try:
+                    ts_after_login = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    after_login_shot = os.path.join(SCREENSHOTS_DIR, f"after_login_nav_{ts_after_login}.png")
+                    sb.save_screenshot(after_login_shot)
+                    print(f"Saved screenshot after login navigation: {after_login_shot}")
+                except Exception:
+                    pass
         except Exception as e:
             print(f"An exception occurred during the CDP login process: {e}")
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
