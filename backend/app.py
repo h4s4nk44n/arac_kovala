@@ -264,7 +264,7 @@ def scrape_sahibinden(driver, url, known_posts):
         except Exception as e:
             print("save cookies failed:", e)
 
-    def solve_captcha_with_buster(driver: WebDriver):
+    def solve_captcha_with_buster(sb: WebDriver):
         """
         Solves a reCAPTCHA challenge by switching to the audio version
         and using the Buster browser extension to solve it. This function
@@ -272,7 +272,7 @@ def scrape_sahibinden(driver, url, known_posts):
         the initial "I'm not a robot" checkbox is clicked.
 
         Args:
-            driver: The SeleniumBase WebDriver instance, which is a subclass of WebDriver.
+            sb: The SeleniumBase SB instance.
         
         Returns:
             bool: True if the CAPTCHA was likely solved, False otherwise.
@@ -280,31 +280,31 @@ def scrape_sahibinden(driver, url, known_posts):
         print("Attempting to solve CAPTCHA using Buster (audio method)...")
         try:
             challenge_iframe_selector = 'iframe[title*="recaptcha challenge"]'
-            driver.wait_for_element_visible(challenge_iframe_selector, timeout=15)
-            challenge_iframe_element = driver.find_element("css selector", challenge_iframe_selector)
-            driver.switch_to.frame(challenge_iframe_element)
+            sb.wait_for_element_visible(challenge_iframe_selector, timeout=15)
+            challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
+            sb.switch_to_frame(challenge_iframe_element)
             print("Switched to CAPTCHA challenge iframe.")
 
             # --- HUMAN-LIKE ACTION: Hover then uc_click ---
             audio_button_selector = "#recaptcha-audio-button"
-            driver.wait_for_element_visible(audio_button_selector, timeout=10)
-            driver.hover(audio_button_selector)
-            driver.uc_click(audio_button_selector)
+            sb.wait_for_element_visible(audio_button_selector, timeout=10)
+            sb.hover(audio_button_selector)
+            sb.uc_click(audio_button_selector)
             print("Hovered and clicked the audio challenge button.")
 
-            driver.sleep(random.uniform(1.5, 2.5))
+            sb.sleep(random.uniform(1.5, 2.5))
 
             # --- NEW: Use GUI click for shadow-root element ---
             buster_button_selector = ".help-button-holder"
-            driver.wait_for_element_visible(buster_button_selector, timeout=10)
+            sb.wait_for_element_visible(buster_button_selector, timeout=10)
             print("Buster button found. Attempting GUI click to bypass shadow-root...")
-            driver.cdp.gui_click_element(buster_button_selector)
+            sb.cdp.gui_click_element(buster_button_selector)
             print("Clicked the Buster 'solve' button via GUI.")
 
-            driver.switch_to.default_content()
+            sb.switch_to_default_content()
             print("Waiting for Buster to solve the audio challenge...")
 
-            long_wait = WebDriverWait(driver, 120)
+            long_wait = WebDriverWait(sb.driver, 120)
             long_wait.until(EC.staleness_of(challenge_iframe_element))
             
             print("CAPTCHA solved successfully! The challenge has disappeared.")
@@ -313,13 +313,12 @@ def scrape_sahibinden(driver, url, known_posts):
         except (TimeoutException, NoSuchFrameException):
             print("CAPTCHA challenge did not appear as expected or an element was not found.")
             print("Assuming no CAPTCHA was needed or it was solved by other means.")
-            driver.switch_to.default_content()
+            sb.switch_to_default_content()
             return False
         except Exception as e:
             print(f"An unexpected error occurred during CAPTCHA solving: {e}")
-            driver.switch_to.default_content()
+            sb.switch_to_default_content()
             return False
-
 
     # --- NEW: PRIMARY LOGIN STRATEGY USING COOKIES ---
     if SESSION_COOKIES_JSON:
@@ -327,7 +326,7 @@ def scrape_sahibinden(driver, url, known_posts):
         cookies_loaded_successfully = False
         try:
             # 1. Go to the base domain FIRST.
-            driver.get("https://www.sahibinden.com/")
+            sb.get("https://www.sahibinden.com/")
             _accept_cookie_banner_if_any()
 
             cookies = json.loads(SESSION_COOKIES_JSON)
@@ -345,9 +344,9 @@ def scrape_sahibinden(driver, url, known_posts):
                     if "path" in cookie: clean_cookie["path"] = cookie["path"]
                     if "secure" in cookie: clean_cookie["secure"] = cookie["secure"]
                     if "expiry" in cookie: clean_cookie["expiry"] = cookie["expiry"]
-                    elif "expirationDate" in cookie: clean_cookie["expiry"] = int(cookie["expirationDate"])
+                    elif "expirationDate" in cookie: clean_cookie["expiry"] = int(cookie)
 
-                    driver.add_cookie(clean_cookie)
+                    sb.add_cookie(clean_cookie)
                     loaded_count += 1
                 except Exception as e:
                     print(f"Warning: Could not add cookie '{cookie.get('name')}'. Reason: {e}")
@@ -358,22 +357,22 @@ def scrape_sahibinden(driver, url, known_posts):
 
             # 3. Navigate to the final target URL with the active session
             print("Navigating to target URL with session...")
-            driver.get(url)
+            sb.get(url)
             _accept_cookie_banner_if_any()
             time.sleep(2)
 
         except Exception as e:
             print(f"A critical error occurred during cookie loading: {e}. Falling back to standard login.")
-            driver.uc_open_with_reconnect(url, 4)
+            sb.uc_open_with_reconnect(url, 4)
             _accept_cookie_banner_if_any()
             
         if not cookies_loaded_successfully:
-            driver.uc_open_with_reconnect(url, 4)
+            sb.uc_open_with_reconnect(url, 4)
             _accept_cookie_banner_if_any()
 
     else:
         # Navigate normally if no cookies are provided
-        driver.uc_open_with_reconnect(url, 4)
+        sb.uc_open_with_reconnect(url, 4)
         _accept_cookie_banner_if_any()
 
 
@@ -384,11 +383,11 @@ def scrape_sahibinden(driver, url, known_posts):
         now = time.time()
         if meta["attempts"] >= MAX_LOGIN_ATTEMPTS:
             print("Max login attempts reached; backing off.")
-            return set(), []
+            return set(),
         if meta["attempts"] > 0 and now - meta["last"] < LOGIN_COOLDOWN_SEC:
             wait_left = int(LOGIN_COOLDOWN_SEC - (now - meta["last"]))
             print(f"Login cooldown active ({wait_left}s left); skipping.")
-            return set(), []
+            return set(),
         
         meta["attempts"] += 1
         meta["last"] = now
@@ -396,41 +395,41 @@ def scrape_sahibinden(driver, url, known_posts):
         try:
             # --- NEW: Activate CDP Mode for maximum stealth ---
             print("Activating CDP Mode for stealthy login...")
-            driver.activate_cdp_mode()
+            sb.activate_cdp_mode()
 
             print("Typing username using CDP...")
             # Use cdp.press_keys for more human-like typing
-            driver.cdp.press_keys("#username", SAHIBINDEN_USER)
-            driver.sleep(random.uniform(0.5, 1.0))
+            sb.cdp.press_keys("#username", SAHIBINDEN_USER)
+            sb.sleep(random.uniform(0.5, 1.0))
 
             print("Typing password using CDP...")
-            driver.cdp.press_keys("#password", SAHIBINDEN_PASS)
-            driver.sleep(random.uniform(0.5, 1.0))
+            sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
+            sb.sleep(random.uniform(0.5, 1.0))
             
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"before_login_click_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
+            sb.save_screenshot(screenshot_path)
             print(f"Saved screenshot before login click to: {screenshot_path}")
 
             print("Clicking login button using CDP...")
-            driver.cdp.click("#userLoginSubmitButton")
+            sb.cdp.click("#userLoginSubmitButton")
             
             # Give the page a moment to present the CAPTCHA after the click
             print("Waiting for page to react after login click...")
-            driver.sleep(5)
+            sb.sleep(5)
 
             # Now, attempt to solve the CAPTCHA which should have appeared
-            solve_captcha_with_buster(driver)
+            solve_captcha_with_buster(sb)
             
             # After solving, wait a bit more to ensure the page has loaded
-            driver.sleep(3)
+            sb.sleep(3)
             
             # Check if we are still on the login page. If so, it failed.
             if _is_on_login():
                 print("Login failed, still on login page after CAPTCHA attempt.")
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_failed_{timestamp}.png")
-                driver.save_screenshot(screenshot_path)
+                sb.save_screenshot(screenshot_path)
                 return set(),
             else:
                 print("Login successful!")
@@ -442,23 +441,23 @@ def scrape_sahibinden(driver, url, known_posts):
             # Save a screenshot on error for debugging
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_error_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
+            sb.save_screenshot(screenshot_path)
             return set(),
             
     # ----------------- scrape -----------------
     print("Proceeding to scrape data...")
     try:
-        driver.wait_for_element_visible("tr.searchResultsItem", timeout=15)
+        sb.wait_for_element_visible("tr.searchResultsItem", timeout=15)
     except Exception as e:
         print(f"Search results not found or page did not load correctly: {e}")
-        return set(), []
+        return set(),
 
-    new_posts = []
+    new_posts =
     seen_new_ids = set()
-    post_elements = driver.find_elements('css selector', 'tr.searchResultsItem')
+    post_elements = sb.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
     
-     # 3. Add a log message if no posts are found
+    # 3. Add a log message if no posts are found
     if not post_elements:
         print("No ad listings found on the page.")
 
@@ -474,7 +473,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 if not title_text or title_text.lower().startswith('www.sahibinden.com'):
                     continue
 
-                model = post.find_element('css selector', '.searchResultsTagAttributeValue, .searchResultsAttributeValue').text.strip()
+                model = post.find_element('css selector', '.searchResultsTagAttributeValue,.searchResultsAttributeValue').text.strip()
 
                 price = post.find_element('css selector', '.searchResultsPriceValue span').text.strip()
                 href = title_el.get_attribute('href')
@@ -493,7 +492,7 @@ def scrape_sahibinden(driver, url, known_posts):
                         cat_idx = raw_segments.index(slug)
                         break
 
-                if cat_idx != -1:
+                if cat_idx!= -1:
                     # Brand is next segment, serie is the one after (if present)
                     if len(raw_segments) > cat_idx + 1:
                         brand = raw_segments[cat_idx + 1].replace('-', ' ').strip().title()
@@ -502,13 +501,13 @@ def scrape_sahibinden(driver, url, known_posts):
                 else:
                     # fallback: old logic
                     IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi', 'suv', 'pickup'}
-                    filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS]
+                    filtered_segments =
                     all_words = '-'.join(filtered_segments).split('-')
-                    car_info_parts = [part for part in all_words if part not in IGNORE_WORDS]
+                    car_info_parts =
                     if len(car_info_parts) > 0:
-                        brand = car_info_parts[0].replace('-', ' ').strip().title()
+                        brand = car_info_parts.replace('-', ' ').strip().title()
                     if len(car_info_parts) > 1:
-                        serie = car_info_parts[1].replace('-', ' ').strip().title()
+                        serie = car_info_parts.[1]replace('-', ' ').strip().title()
 
 
                 print(f"brand : {brand}, serie : {serie}")
@@ -519,13 +518,13 @@ def scrape_sahibinden(driver, url, known_posts):
                             cells = elem.find_elements('css selector', '.searchResultsAttributeValue')
                         return [c.text.strip() for c in cells if c.text]
                     except Exception:
-                        return []
+                        return
 
                 attrs = _attr_texts(post)
                 year_val, km_val = None, None
                 if attrs:
                     try:
-                        year_digits = re.sub(r'[^0-9]', '', (attrs[0] if len(attrs) > 0 else ''))
+                        year_digits = re.sub(r'[^0-9]', '', (attrs if len(attrs) > 0 else ''))
                         year_val = int(year_digits) if len(year_digits) >= 4 else None
                     except Exception:
                         year_val = None
@@ -560,6 +559,7 @@ def scrape_sahibinden(driver, url, known_posts):
         print("Scrape complete. No new posts found on this run.")
     current_ids = set()
     return current_ids, new_posts
+
 
 
 # -------------------- Flask App & State --------------------
@@ -620,45 +620,6 @@ def _save_data_to_disk():
             print(f"Failed to write data to disk: {e}")
 
 # --- MODIFIED FOR DOCKER DEPLOYMENT ---
-def _ensure_driver():
-    """Creates and returns a new Selenium driver instance."""
-    print("Starting virtual display...")
-    display = Display(visible=0, size=(1366, 768))
-    display.start()
-
-    print("Starting a new Selenium driver instance...")
-
-    proxy_string = os.getenv("PROXY_STRING")
-    if not proxy_string:
-        print("WARNING: PROXY_STRING not set. Running without a proxy.")
-
-    driver = Driver(
-        uc=True,
-        headless=False,
-        no_sandbox=True,
-        disable_gpu=True,
-        agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-               "AppleWebKit/537.36 (KHTML, like Gecko) "
-               "Chrome/141.0.0.0 Safari/537.36"),
-        locale_code="tr-TR",
-        window_size="1366,768",
-        proxy=proxy_string if proxy_string else None,
-        extension_dir = "buster_chrome"
-    )
-
-    driver.execute_cdp_cmd(
-        "Page.addScriptToEvaluateOnNewDocument",
-        {
-            "source": """
-                Object.defineProperty(navigator, 'webdriver', {
-                  get: () => undefined
-                })
-            """
-        },
-    )
-    
-    # We no longer need _prime_anon_cookies because the main function handles it.
-    return driver, display
 
 def _scrape_loop(poll_seconds: int = 60):
     print("Scraper loop started.")
@@ -671,61 +632,84 @@ def _scrape_loop(poll_seconds: int = 60):
                 continue
 
             for flt in items:
-                driver = None
-                display = None
+                # --- NEW: Initialize SB context manager here ---
+                proxy_string = os.getenv("PROXY_STRING")
+                if not proxy_string:
+                    print("WARNING: PROXY_STRING not set. Running without a proxy.")
+                
                 try:
-                    # 1. Create a fresh driver and display for this specific scrape
-                    driver, display = _ensure_driver()
-                    
-                    fid = flt['id']
-                    url = flt['url']
-                    with STATE_LOCK: known = KNOWN_IDS.setdefault(fid, set())
-                    
-                    current_ids, new_posts = scrape_sahibinden(driver, url, known)
-                    if new_posts:
-                        now_iso = datetime.now(timezone.utc).isoformat()
-                        for p in new_posts:
-                            p['discovered_at'] = now_iso
-                            p['filter_id'] = fid
-                            p['filter_name'] = flt.get('name')
+                    with SB(
+                        uc=True,
+                        headless=False,  # Must be False for xvfb and GUI actions
+                        xvfb=True,       # Use virtual display on server
+                        no_sandbox=True,
+                        disable_gpu=True,
+                        agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                               "AppleWebKit/537.36 (KHTML, like Gecko) "
+                               "Chrome/141.0.0.0 Safari/537.36"),
+                        locale_code="tr-TR",
+                        window_size="1366,768",
+                        proxy=proxy_string if proxy_string else None,
+                        extension_dir="buster_chrome"
+                    ) as sb:
+                        # Execute stealth script on new documents
+                        sb.driver.execute_cdp_cmd(
+                            "Page.addScriptToEvaluateOnNewDocument",
+                            {
+                                "source": """
+                                    Object.defineProperty(navigator, 'webdriver', {
+                                      get: () => undefined
+                                    })
+                                """
+                            },
+                        )
+
+                        fid = flt['id']
+                        url = flt['url']
+                        with STATE_LOCK: known = KNOWN_IDS.setdefault(fid, set())
+                        
+                        current_ids, new_posts = scrape_sahibinden(sb, url, known)
+                        if new_posts:
+                            now_iso = datetime.now(timezone.utc).isoformat()
+                            for p in new_posts:
+                                p['discovered_at'] = now_iso
+                                p['filter_id'] = fid
+                                p['filter_name'] = flt.get('name')
+                            
+                            with STATE_LOCK:
+                                current_posts = POSTS.get(fid,)
+                                combined_posts = new_posts + current_posts
+                                
+                                unique_posts =
+                                seen_ids_in_list = set()
+                                for post in combined_posts:
+                                    if post['id'] not in seen_ids_in_list:
+                                        unique_posts.append(post)
+                                        seen_ids_in_list.add(post['id'])
+                                
+                                sorted_posts = sorted(unique_posts, key=lambda p: p.get('discovered_at', ''), reverse=True)
+                                POSTS[fid] = sorted_posts[:10]
+                                
+                                KNOWN_IDS[fid].update(p['id'] for p in new_posts)
+
+                            print(f"Found {len(new_posts)} new posts for filter '{flt.get('name')}'. List capped at 10. Sending notifications...")
+                            
+                            for post in new_posts:
+                                title = f"{post.get('title')}"
+                                body = f"Price: {post.get('price')}"
+                                send_push_notification(title, body, data={'url': post.get('url')})
                         
                         with STATE_LOCK:
-                            current_posts = POSTS.get(fid, [])
-                            combined_posts = new_posts + current_posts
-                            
-                            unique_posts = []
-                            seen_ids_in_list = set()
-                            for post in combined_posts:
-                                if post['id'] not in seen_ids_in_list:
-                                    unique_posts.append(post)
-                                    seen_ids_in_list.add(post['id'])
-                            
-                            sorted_posts = sorted(unique_posts, key=lambda p: p.get('discovered_at', ''), reverse=True)
-                            POSTS[fid] = sorted_posts[:10]
-                            
-                            KNOWN_IDS[fid].update(p['id'] for p in new_posts)
-
-                        print(f"Found {len(new_posts)} new posts for filter '{flt.get('name')}'. List capped at 10. Sending notifications...")
+                            KNOWN_IDS[fid].update(current_ids)
                         
-                        for post in new_posts:
-                            title = f"{post.get('title')}"
-                            body = f"Price: {post.get('price')}"
-                            send_push_notification(title, body, data={'url': post.get('url')})
-                    
-                    with STATE_LOCK:
-                        KNOWN_IDS[fid].update(current_ids)
-                    
-                    _save_data_to_disk()
+                        _save_data_to_disk()
 
                 except Exception as e:
-                    print(f"Error scraping {url}: {e}")
-                finally:
-                    # 2. IMPORTANT: Always shut down the driver and display
-                    if driver:
-                        driver.quit()
-                    if display:
-                        display.stop()
-                    print("Driver and display for this run have been closed.")
+                    print(f"Error during SB session for {flt.get('url')}: {e}")
+                
+                # The 'with SB(...)' block automatically handles driver.quit()
+                print("SB session for this run has been closed.")
+
             print(f"Scrape cycle complete. Waiting for {poll_seconds} seconds...")
             time.sleep(poll_seconds)
         except Exception as e:
