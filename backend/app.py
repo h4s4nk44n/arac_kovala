@@ -248,42 +248,123 @@ def scrape_sahibinden(sb, url, known_posts):
     def solve_captcha_with_buster(sb):
         print("Attempting to solve CAPTCHA using Buster (audio method)...")
         try:
-            challenge_iframe_selector = 'iframe[title*="recaptcha challenge"]'
-            sb.wait_for_element_visible(challenge_iframe_selector, timeout=15)
+            # There can be multiple challenge iframe title variants
+            challenge_iframe_selector = 'iframe[title*="recaptcha challenge"], iframe[src*="recaptcha"], iframe[name*="c-" ]'
+            sb.wait_for_element_present(challenge_iframe_selector, timeout=20)
             challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
             sb.switch_to_frame(challenge_iframe_element)
             print("Switched to CAPTCHA challenge iframe.")
 
+            # Screenshot inside the challenge for debugging
+            try:
+                ts_cap = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_iframe_{ts_cap}.png"))
+            except Exception:
+                pass
+
+            # Click the audio button to get an audio challenge
             audio_button_selector = "#recaptcha-audio-button"
-            sb.wait_for_element_visible(audio_button_selector, timeout=10)
-            sb.hover(audio_button_selector)
-            sb.uc_click(audio_button_selector)
+            sb.wait_for_element_visible(audio_button_selector, timeout=15)
+            try:
+                sb.hover(audio_button_selector)
+            except Exception:
+                pass
+            try:
+                sb.uc_click(audio_button_selector)
+            except Exception:
+                sb.js_click(audio_button_selector)
             print("Hovered and clicked the audio challenge button.")
 
             sb.sleep(random.uniform(1.5, 2.5))
 
-            buster_button_selector = ".help-button-holder"
-            sb.wait_for_element_visible(buster_button_selector, timeout=10)
-            print("Buster button found. Attempting GUI click to bypass shadow-root...")
-            sb.cdp.gui_click_element(buster_button_selector)
-            print("Clicked the Buster 'solve' button via GUI.")
+            # Try multiple selectors for the Buster button; extension may change over time
+            buster_selectors = [
+                ".help-button-holder",
+                "button[aria-label*='Buster']",
+                "button[title*='Buster']",
+                "div[aria-label*='Buster']",
+                "#buster-button",
+                "[id*='buster']",
+            ]
 
+            found_selector = None
+            # Poll briefly for the button to render
+            for _ in range(30):  # ~15 seconds
+                for sel in buster_selectors:
+                    try:
+                        if sb.is_element_present(sel):
+                            found_selector = sel
+                            break
+                    except Exception:
+                        continue
+                if found_selector:
+                    break
+                sb.sleep(0.5)
+
+            if found_selector:
+                print("Buster UI found (selector):", found_selector)
+                # Try multiple click strategies
+                clicked = False
+                for click_try in ("cdp_gui", "cdp", "js", "normal"):
+                    try:
+                        if click_try == "cdp_gui":
+                            sb.cdp.gui_click_element(found_selector)
+                        elif click_try == "cdp":
+                            sb.cdp.click(found_selector)
+                        elif click_try == "js":
+                            sb.js_click(found_selector)
+                        else:
+                            sb.click(found_selector)
+                        clicked = True
+                        print("Clicked Buster via:", click_try)
+                        break
+                    except Exception:
+                        continue
+                if not clicked:
+                    print("Falling back to Buster hotkey (ALT+SHIFT+B)")
+                    try:
+                        sb.press_keys("body", "ALT+SHIFT+B")
+                    except Exception:
+                        try:
+                            sb.cdp.press_keys("body", "ALT+SHIFT+B")
+                        except Exception:
+                            pass
+            else:
+                print("Buster UI not found. Trying hotkey (ALT+SHIFT+B) as fallback...")
+                try:
+                    sb.press_keys("body", "ALT+SHIFT+B")
+                except Exception:
+                    try:
+                        sb.cdp.press_keys("body", "ALT+SHIFT+B")
+                    except Exception:
+                        pass
+
+            # Return to default content and wait for the challenge iframe to disappear
             sb.switch_to_default_content()
             print("Waiting for Buster to solve the audio challenge...")
 
-            long_wait = WebDriverWait(sb.driver, 120)
-            long_wait.until(EC.staleness_of(challenge_iframe_element))
-            
-            print("CAPTCHA solved successfully! The challenge has disappeared.")
-            return True
+            try:
+                long_wait = WebDriverWait(sb.driver, 180)
+                long_wait.until(EC.staleness_of(challenge_iframe_element))
+                print("CAPTCHA solved successfully! The challenge has disappeared.")
+                return True
+            except Exception:
+                print("Challenge iframe still present after waiting. CAPTCHA may not be solved.")
+                return False
         except (TimeoutException, NoSuchFrameException):
             print("CAPTCHA challenge did not appear as expected or an element was not found.")
             print("Assuming no CAPTCHA was needed or it was solved by other means.")
-            sb.switch_to_default_content()
+            try:
+                sb.switch_to_default_content()
+            except Exception:
+                pass
             return False
         except Exception as e:
             print(f"An unexpected error occurred during CAPTCHA solving: {e}")
-            sb.switch_to_default_content()
+            try:
+                sb.switch_to_default_content()
+            except Exception:
+                pass
             return False
 
     if SESSION_COOKIES_JSON:
