@@ -285,20 +285,21 @@ def scrape_sahibinden(driver, url, known_posts):
             driver.switch_to.frame(challenge_iframe_element)
             print("Switched to CAPTCHA challenge iframe.")
 
-            # --- HUMAN-LIKE ENHANCEMENT 1: Hover before clicking ---
-            # This simulates a user moving their mouse over the button before clicking it.
+            # --- HUMAN-LIKE ACTION: Hover then uc_click ---
             audio_button_selector = "#recaptcha-audio-button"
+            driver.wait_for_element_visible(audio_button_selector, timeout=10)
+            driver.hover(audio_button_selector)
             driver.uc_click(audio_button_selector)
-            print("Clicked the audio challenge button.")
+            print("Hovered and clicked the audio challenge button.")
 
-            # --- HUMAN-LIKE ENHANCEMENT 2: Use randomized delays ---
-            # Instead of a fixed sleep, a random pause appears more natural.
             driver.sleep(random.uniform(1.5, 2.5))
 
+            # --- NEW: Use GUI click for shadow-root element ---
             buster_button_selector = ".help-button-holder"
-            # Use hover_and_click again for the Buster button.
-            driver.uc_click(buster_button_selector)
-            print("Clicked the Buster 'solve' button.")
+            driver.wait_for_element_visible(buster_button_selector, timeout=10)
+            print("Buster button found. Attempting GUI click to bypass shadow-root...")
+            driver.cdp.gui_click_element(buster_button_selector)
+            print("Clicked the Buster 'solve' button via GUI.")
 
             driver.switch_to.default_content()
             print("Waiting for Buster to solve the audio challenge...")
@@ -393,53 +394,56 @@ def scrape_sahibinden(driver, url, known_posts):
         meta["last"] = now
         
         try:
-            
-            print("Typing username...")
-            username_field = driver.find_element("#username")
-            for char in SAHIBINDEN_USER:
-                username_field.send_keys(char)
-                time.sleep(random.uniform(0.08, 0.25))
-            time.sleep(0.6)
+            # --- NEW: Activate CDP Mode for maximum stealth ---
+            print("Activating CDP Mode for stealthy login...")
+            driver.activate_cdp_mode()
 
-            print("Typing password character by character...")
-            password_field = driver.find_element("#password")
-            for char in SAHIBINDEN_PASS:
-                password_field.send_keys(char)
-                time.sleep(random.uniform(0.08, 0.25))
-            
+            print("Typing username using CDP...")
+            # Use cdp.press_keys for more human-like typing
+            driver.cdp.press_keys("#username", SAHIBINDEN_USER)
+            driver.sleep(random.uniform(0.5, 1.0))
 
-            _handle_captcha_if_any(driver)
+            print("Typing password using CDP...")
+            driver.cdp.press_keys("#password", SAHIBINDEN_PASS)
+            driver.sleep(random.uniform(0.5, 1.0))
             
-            # (Your entire human-like login block is preserved here)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"before_login_click_{timestamp}.png")
             driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-            # ... (the rest of your screenshot and typing logic is here) ...
+            print(f"Saved screenshot before login click to: {screenshot_path}")
 
-            driver.uc_click("#userLoginSubmitButton")
-            time.sleep(5)
+            print("Clicking login button using CDP...")
+            driver.cdp.click("#userLoginSubmitButton")
+            
+            # Give the page a moment to present the CAPTCHA after the click
+            print("Waiting for page to react after login click...")
+            driver.sleep(5)
 
-            # (Your entire human-like login block is preserved here)
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-            # ... (the rest of your screenshot and typing logic is here) ...
-
+            # Now, attempt to solve the CAPTCHA which should have appeared
             solve_captcha_with_buster(driver)
-
-            # (Your entire human-like login block is preserved here)
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_start_{timestamp}.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"Saved initial login page screenshot to: {screenshot_path}")
-            # ... (the rest of your screenshot and typing logic is here) ...
+            
+            # After solving, wait a bit more to ensure the page has loaded
+            driver.sleep(3)
+            
+            # Check if we are still on the login page. If so, it failed.
+            if _is_on_login():
+                print("Login failed, still on login page after CAPTCHA attempt.")
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_failed_{timestamp}.png")
+                driver.save_screenshot(screenshot_path)
+                return set(),
+            else:
+                print("Login successful!")
+                _save_current_cookies()
 
 
         except Exception as e:
-            print(f"An exception occurred during the login process: {e}")
-            return set(), []
+            print(f"An exception occurred during the CDP login process: {e}")
+            # Save a screenshot on error for debugging
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_error_{timestamp}.png")
+            driver.save_screenshot(screenshot_path)
+            return set(),
             
     # ----------------- scrape -----------------
     print("Proceeding to scrape data...")
