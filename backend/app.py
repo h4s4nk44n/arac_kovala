@@ -1,4 +1,4 @@
-from seleniumbase import Driver
+from seleniumbase import SB
 from flask import Flask, jsonify, request, send_from_directory, abort
 from flask_cors import CORS
 import threading
