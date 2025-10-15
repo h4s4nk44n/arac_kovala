@@ -85,7 +85,7 @@ def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"
         cookies.append(c)
     return cookies
 
-def _add_cookies_for_host(driver, host_url: str, cookies: list):
+def _add_cookies_for_host(sb, host_url: str, cookies: list):
     """Navigate to host_url, then add cookies. Host-only cookies only on exact host."""
     try:
         sb.get(host_url)
@@ -106,7 +106,7 @@ def _add_cookies_for_host(driver, host_url: str, cookies: list):
             print("cookie add failed:", cookie.get("name"), e)
 
 
-def _prime_anon_cookies(driver):
+def _prime_anon_cookies(sb):
     """
     This function is intentionally left blank.
     Session handling is now managed by scrape_sahibinden.
@@ -201,7 +201,7 @@ def _download_image(image_url, post_id):
         return None
 
 
-def scrape_sahibinden(driver, url, known_posts):
+def scrape_sahibinden(sb, url, known_posts):
     # --- config from env ---
     SESSION_COOKIES_JSON = os.getenv("SESSION_COOKIES_JSON")
     SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
@@ -213,8 +213,9 @@ def scrape_sahibinden(driver, url, known_posts):
     SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
     os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
-    meta = getattr(driver, "_login_meta", {"attempts": 0, "last": 0.0})
-    sb._login_meta = meta
+    if not hasattr(sb, "_login_meta"):
+        sb._login_meta = {"attempts": 0, "last": 0.0}
+    meta = sb._login_meta
 
     def _is_on_login():
         try:
@@ -231,10 +232,10 @@ def scrape_sahibinden(driver, url, known_posts):
         except Exception:
             pass
 
-    def _handle_captcha_if_any(driver):
+    def _handle_captcha_if_any(sb):
         try:
             # Wait up to 5 seconds for either a reCAPTCHA or hCaptcha iframe to be visible
-            wait = WebDriverWait(driver, 5)
+            wait = WebDriverWait(sb, 5)
             
             # Use a more flexible CSS selector to find either type of CAPTCHA
             # This looks for an iframe with a src containing 'recaptcha' OR 'hcaptcha'
