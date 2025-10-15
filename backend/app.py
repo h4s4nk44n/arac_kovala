@@ -248,6 +248,14 @@ def scrape_sahibinden(sb, url, known_posts):
     def solve_captcha_with_buster(sb):
         print("Attempting to solve CAPTCHA using Buster (audio method)...")
         try:
+            # Save a screenshot before any CAPTCHA interactions
+            try:
+                ts_pre = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                pre_cap_path = os.path.join(SCREENSHOTS_DIR, f"captcha_before_{ts_pre}.png")
+                sb.save_screenshot(pre_cap_path)
+                print(f"Saved pre-captcha screenshot: {pre_cap_path}")
+            except Exception as _e:
+                print("Failed to capture pre-captcha screenshot:", _e)
             # There can be multiple challenge iframe title variants
             challenge_iframe_selector = 'iframe[title*="recaptcha challenge"], iframe[src*="recaptcha"], iframe[name*="c-" ]'
             sb.wait_for_element_present(challenge_iframe_selector, timeout=20)
