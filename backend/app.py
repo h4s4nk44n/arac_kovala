@@ -261,8 +261,8 @@ def scrape_sahibinden(sb, url, known_posts):
             try:
                 challenge_iframe_selector = 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'
                 sb.wait_for_element_present(challenge_iframe_selector, timeout=20)
-                challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
-                sb.switch_to_frame(challenge_iframe_element)
+            challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
+            sb.switch_to_frame(challenge_iframe_element)
                 print("Switched to CAPTCHA challenge iframe (direct selector).")
             except Exception as _e1:
                 print("Direct challenge iframe wait failed, scanning all iframes...", _e1)
@@ -326,11 +326,11 @@ def scrape_sahibinden(sb, url, known_posts):
             audio_button_selector = "#recaptcha-audio-button"
             sb.wait_for_element_visible(audio_button_selector, timeout=15)
             try:
-                sb.hover(audio_button_selector)
+            sb.hover(audio_button_selector)
             except Exception:
                 pass
             try:
-                sb.uc_click(audio_button_selector)
+            sb.uc_click(audio_button_selector)
             except Exception:
                 sb.js_click(audio_button_selector)
             print("Hovered and clicked the audio challenge button.")
@@ -388,32 +388,41 @@ def scrape_sahibinden(sb, url, known_posts):
 
             if found_selector:
                 print("Buster UI found (selector):", found_selector)
-                # Try multiple click strategies, including clicking via coordinates on host element
+                # Ensure the host is in view
+                try:
+                    el = sb.find_element("css selector", found_selector)
+                    sb.driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", el)
+                except Exception:
+                    el = None
+                sb.sleep(0.3)
+
+                # Try multiple click strategies, prioritizing GUI and coordinate clicks
                 clicked = False
-                for click_try in ("cdp_gui", "cdp", "js", "normal", "coords"):
+                for click_try in ("cdp_gui", "coords", "cdp", "normal", "js"):
                     try:
                         if click_try == "cdp_gui":
                             sb.cdp.gui_click_element(found_selector)
+                        elif click_try == "coords":
+                            if el is None:
+                                el = sb.find_element("css selector", found_selector)
+                            # Use viewport coordinates from boundingClientRect
+                            rect = sb.driver.execute_script("var r = arguments[0].getBoundingClientRect(); return {x: r.left + r.width/2, y: r.top + r.height/2, left:r.left, top:r.top, width:r.width, height:r.height};", el)
+                            cx, cy = int(rect.get('x', 0)), int(rect.get('y', 0))
+                            # Try a few jittered clicks
+                            for dx, dy in ((0,0), (2,2), (-2,-2)):
+                                sb.cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": cx+dx, "y": cy+dy, "button": "left", "clickCount": 1})
+                                sb.cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": cx+dx, "y": cy+dy, "button": "left", "clickCount": 1})
+                                sb.sleep(0.2)
                         elif click_try == "cdp":
                             sb.cdp.click(found_selector)
-                        elif click_try == "js":
-                            sb.js_click(found_selector)
                         elif click_try == "normal":
                             sb.click(found_selector)
                         else:
-                            # Click center of the host element (shadow-root is closed)
-                            try:
-                                el = sb.find_element("css selector", found_selector)
-                                loc = el.location
-                                size = el.size
-                                center_x = int(loc.get('x', 0) + size.get('width', 0) / 2)
-                                center_y = int(loc.get('y', 0) + size.get('height', 0) / 2)
-                                sb.cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": center_x, "y": center_y, "button": "left", "clickCount": 1})
-                                sb.cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": center_x, "y": center_y, "button": "left", "clickCount": 1})
-                            except Exception:
-                                pass
+                            sb.js_click(found_selector)
                         clicked = True
                         print("Clicked Buster via:", click_try)
+                        # small wait after click to allow UI to respond
+                        sb.sleep(1.0)
                         break
                     except Exception:
                         continue
@@ -447,9 +456,9 @@ def scrape_sahibinden(sb, url, known_posts):
 
             try:
                 long_wait = WebDriverWait(sb.driver, 180)
-                long_wait.until(EC.staleness_of(challenge_iframe_element))
-                print("CAPTCHA solved successfully! The challenge has disappeared.")
-                return True
+            long_wait.until(EC.staleness_of(challenge_iframe_element))
+            print("CAPTCHA solved successfully! The challenge has disappeared.")
+            return True
             except Exception:
                 print("Challenge iframe still present after waiting. CAPTCHA may not be solved.")
                 return False
@@ -457,14 +466,14 @@ def scrape_sahibinden(sb, url, known_posts):
             print("CAPTCHA challenge did not appear as expected or an element was not found.")
             print("Assuming no CAPTCHA was needed or it was solved by other means.")
             try:
-                sb.switch_to_default_content()
+            sb.switch_to_default_content()
             except Exception:
                 pass
             return False
         except Exception as e:
             print(f"An unexpected error occurred during CAPTCHA solving: {e}")
             try:
-                sb.switch_to_default_content()
+            sb.switch_to_default_content()
             except Exception:
                 pass
             return False
@@ -640,7 +649,7 @@ def scrape_sahibinden(sb, url, known_posts):
             except Exception:
                 pass
             try:
-                sb.cdp.press_keys("#username", SAHIBINDEN_USER)
+            sb.cdp.press_keys("#username", SAHIBINDEN_USER)
             except Exception:
                 sb.type("#username", SAHIBINDEN_USER)
             sb.sleep(random.uniform(0.5, 1.0))
@@ -650,7 +659,7 @@ def scrape_sahibinden(sb, url, known_posts):
             except Exception:
                 pass
             try:
-                sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
+            sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
             except Exception:
                 sb.type("#password", SAHIBINDEN_PASS)
             sb.sleep(random.uniform(0.5, 1.0))
@@ -692,7 +701,7 @@ def scrape_sahibinden(sb, url, known_posts):
             sb.sleep(5)
             # Try solving captcha, but don't fail the whole flow if Buster UI isn't present
             try:
-                solve_captcha_with_buster(sb)
+            solve_captcha_with_buster(sb)
             except Exception as _e:
                 print("Captcha solver raised:", _e)
             sb.sleep(3)
