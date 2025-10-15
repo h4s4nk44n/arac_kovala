@@ -540,6 +540,11 @@ def scrape_sahibinden(sb, url, known_posts):
                     EC.invisibility_of_element_located((By.CSS_SELECTOR, 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'))
                 )
                 print("CAPTCHA solved successfully! The challenge has disappeared.")
+                try:
+                    ts_solved = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_solved_{ts_solved}.png"))
+                except Exception:
+                    pass
                 return True
             except Exception:
                 print("Challenge iframe still present after waiting.")
@@ -862,9 +867,13 @@ def scrape_sahibinden(sb, url, known_posts):
             sb.sleep(3)
             if _is_on_login():
                 print("Login failed, still on login page after CAPTCHA attempt.")
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_failed_{timestamp}.png")
-                sb.save_screenshot(screenshot_path)
+                try:
+                    ts_fail = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_failed_{ts_fail}.png")
+                    sb.save_screenshot(screenshot_path)
+                    print(f"Saved screenshot on failure: {screenshot_path}")
+                except Exception:
+                    pass
                 return set(), []
             else:
                 print("Login successful!")
