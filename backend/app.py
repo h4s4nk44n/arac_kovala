@@ -339,17 +339,15 @@ def scrape_sahibinden(sb, url, known_posts):
 
             # Try multiple selectors for the Buster button; extension may change over time
             buster_selectors = [
-                ".help-button-holder",
-                "button[aria-label*='Buster']",
-                "button[title*='Buster']",
-                "div[aria-label*='Buster']",
-                "#buster-button",
-                "[id*='buster']",
+                ".help-button-holder",  # host with shadow-root (closed)
+                "#help-button-holder",
+                "#solver-button",       # inside shadow root (may not be directly reachable)
             ]
 
             found_selector = None
-            # Poll briefly for the button to render
-            for _ in range(30):  # ~15 seconds
+            # Poll briefly for the button to render; search current frame, then all frames
+            for _ in range(30):  # ~15 seconds total
+                # Check current context first
                 for sel in buster_selectors:
                     try:
                         if sb.is_element_present(sel):
@@ -359,13 +357,40 @@ def scrape_sahibinden(sb, url, known_posts):
                         continue
                 if found_selector:
                     break
+
+                # Search other iframes
+                try:
+                    sb.switch_to_default_content()
+                    frames2 = sb.find_elements('css selector', 'iframe')
+                except Exception:
+                    frames2 = []
+                for fr2 in frames2:
+                    try:
+                        sb.switch_to_frame(fr2)
+                        for sel in buster_selectors:
+                            try:
+                                if sb.is_element_present(sel):
+                                    found_selector = sel
+                                    break
+                            except Exception:
+                                continue
+                        if found_selector:
+                            break
+                        sb.switch_to_default_content()
+                    except Exception:
+                        try:
+                            sb.switch_to_default_content()
+                        except Exception:
+                            pass
+                if found_selector:
+                    break
                 sb.sleep(0.5)
 
             if found_selector:
                 print("Buster UI found (selector):", found_selector)
-                # Try multiple click strategies
+                # Try multiple click strategies, including clicking via coordinates on host element
                 clicked = False
-                for click_try in ("cdp_gui", "cdp", "js", "normal"):
+                for click_try in ("cdp_gui", "cdp", "js", "normal", "coords"):
                     try:
                         if click_try == "cdp_gui":
                             sb.cdp.gui_click_element(found_selector)
@@ -373,8 +398,20 @@ def scrape_sahibinden(sb, url, known_posts):
                             sb.cdp.click(found_selector)
                         elif click_try == "js":
                             sb.js_click(found_selector)
-                        else:
+                        elif click_try == "normal":
                             sb.click(found_selector)
+                        else:
+                            # Click center of the host element (shadow-root is closed)
+                            try:
+                                el = sb.find_element("css selector", found_selector)
+                                loc = el.location
+                                size = el.size
+                                center_x = int(loc.get('x', 0) + size.get('width', 0) / 2)
+                                center_y = int(loc.get('y', 0) + size.get('height', 0) / 2)
+                                sb.cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": center_x, "y": center_y, "button": "left", "clickCount": 1})
+                                sb.cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": center_x, "y": center_y, "button": "left", "clickCount": 1})
+                            except Exception:
+                                pass
                         clicked = True
                         print("Clicked Buster via:", click_try)
                         break
@@ -390,14 +427,19 @@ def scrape_sahibinden(sb, url, known_posts):
                         except Exception:
                             pass
             else:
-                print("Buster UI not found. Trying hotkey (ALT+SHIFT+B) as fallback...")
-                try:
-                    sb.press_keys("body", "ALT+SHIFT+B")
-                except Exception:
+                print("Buster UI not found. Trying hotkeys as fallback...")
+                for keys in ("ALT+SHIFT+B", "ALT+B", "CTRL+B"):
                     try:
-                        sb.cdp.press_keys("body", "ALT+SHIFT+B")
+                        sb.press_keys("body", keys)
+                        sb.sleep(1.0)
+                        break
                     except Exception:
-                        pass
+                        try:
+                            sb.cdp.press_keys("body", keys)
+                            sb.sleep(1.0)
+                            break
+                        except Exception:
+                            continue
 
             # Return to default content and wait for the challenge iframe to disappear
             sb.switch_to_default_content()
