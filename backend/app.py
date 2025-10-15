@@ -364,6 +364,68 @@ def scrape_sahibinden(sb, url, known_posts):
                 print(f"Saved login page screenshot: {pre_login_shot}")
             except Exception as _e:
                 print(f"Failed to capture early login snapshots: {_e}")
+
+            # In case an extension opened a new tab, switch to last tab and ensure page is ready
+            try:
+                handles = sb.driver.window_handles
+                if handles:
+                    sb.driver.switch_to.window(handles[-1])
+                    try:
+                        print("Switched to tab:", sb.get_current_url())
+                    except Exception:
+                        pass
+            except Exception as _e:
+                print("Window handle switch failed:", _e)
+
+            try:
+                sb.wait_for_ready_state_complete()
+            except Exception:
+                pass
+
+            # If the page appears blank or fields missing, navigate directly to known login URLs
+            try:
+                page_source_len = len((sb.driver.page_source or "").strip())
+            except Exception:
+                page_source_len = 0
+            if page_source_len < 300 or not sb.is_element_present("#username"):
+                LOGIN_URLS = [
+                    "https://www.sahibinden.com/kullanici/giris",
+                    "https://secure2.sahibinden.com/giris",
+                    "https://secure.sahibinden.com/giris",
+                    "https://www.sahibinden.com/giris",
+                ]
+                for login_url in LOGIN_URLS:
+                    try:
+                        print("Navigating directly to login URL:", login_url)
+                        sb.uc_open_with_reconnect(login_url, 4)
+                        _accept_cookie_banner_if_any()
+                        sb.wait_for_ready_state_complete()
+                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                            break
+                        sb.sleep(1.0)
+                    except Exception as _e:
+                        print("Login URL attempt failed:", _e)
+
+                # Save another snapshot after navigation attempts
+                try:
+                    ts1 = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    post_nav_shot = os.path.join(SCREENSHOTS_DIR, f"login_page_after_nav_{ts1}.png")
+                    sb.save_screenshot(post_nav_shot)
+                    html_source2 = ""
+                    try:
+                        html_source2 = sb.get_page_source()
+                    except Exception:
+                        try:
+                            html_source2 = sb.driver.page_source
+                        except Exception:
+                            html_source2 = ""
+                    if html_source2:
+                        post_nav_html = os.path.join(HTML_SNAPSHOTS_DIR, f"login_page_after_nav_{ts1}.html")
+                        with open(post_nav_html, 'w', encoding='utf-8') as f:
+                            f.write(html_source2)
+                    print(f"Saved post-navigation login page screenshot: {post_nav_shot}")
+                except Exception as _e:
+                    print("Failed to capture post-navigation snapshots:", _e)
             # Ensure consent overlays don't block fields on the login page
             _accept_cookie_banner_if_any()
             # Wait for fields to be visible
