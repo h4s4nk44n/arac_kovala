@@ -261,8 +261,8 @@ def scrape_sahibinden(sb, url, known_posts):
             try:
                 challenge_iframe_selector = 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'
                 sb.wait_for_element_present(challenge_iframe_selector, timeout=20)
-            challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
-            sb.switch_to_frame(challenge_iframe_element)
+                challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
+                sb.switch_to_frame(challenge_iframe_element)
                 print("Switched to CAPTCHA challenge iframe (direct selector).")
             except Exception as _e1:
                 print("Direct challenge iframe wait failed, scanning all iframes...", _e1)
@@ -326,11 +326,11 @@ def scrape_sahibinden(sb, url, known_posts):
             audio_button_selector = "#recaptcha-audio-button"
             sb.wait_for_element_visible(audio_button_selector, timeout=15)
             try:
-            sb.hover(audio_button_selector)
+                sb.hover(audio_button_selector)
             except Exception:
                 pass
             try:
-            sb.uc_click(audio_button_selector)
+                sb.uc_click(audio_button_selector)
             except Exception:
                 sb.js_click(audio_button_selector)
             print("Hovered and clicked the audio challenge button.")
@@ -456,9 +456,9 @@ def scrape_sahibinden(sb, url, known_posts):
 
             try:
                 long_wait = WebDriverWait(sb.driver, 180)
-            long_wait.until(EC.staleness_of(challenge_iframe_element))
-            print("CAPTCHA solved successfully! The challenge has disappeared.")
-            return True
+                long_wait.until(EC.staleness_of(challenge_iframe_element))
+                print("CAPTCHA solved successfully! The challenge has disappeared.")
+                return True
             except Exception:
                 print("Challenge iframe still present after waiting. CAPTCHA may not be solved.")
                 return False
@@ -466,14 +466,14 @@ def scrape_sahibinden(sb, url, known_posts):
             print("CAPTCHA challenge did not appear as expected or an element was not found.")
             print("Assuming no CAPTCHA was needed or it was solved by other means.")
             try:
-            sb.switch_to_default_content()
+                sb.switch_to_default_content()
             except Exception:
                 pass
             return False
         except Exception as e:
             print(f"An unexpected error occurred during CAPTCHA solving: {e}")
             try:
-            sb.switch_to_default_content()
+                sb.switch_to_default_content()
             except Exception:
                 pass
             return False
@@ -701,7 +701,7 @@ def scrape_sahibinden(sb, url, known_posts):
             sb.sleep(5)
             # Try solving captcha, but don't fail the whole flow if Buster UI isn't present
             try:
-            solve_captcha_with_buster(sb)
+                solve_captcha_with_buster(sb)
             except Exception as _e:
                 print("Captcha solver raised:", _e)
             sb.sleep(3)
