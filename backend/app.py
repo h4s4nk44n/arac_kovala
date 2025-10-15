@@ -539,7 +539,7 @@ def scrape_sahibinden(sb, url, known_posts):
                 WebDriverWait(sb.driver, 40).until(
                     EC.invisibility_of_element_located((By.CSS_SELECTOR, 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'))
                 )
-            print("CAPTCHA solved successfully! The challenge has disappeared.")
+                print("CAPTCHA solved successfully! The challenge has disappeared.")
                 # Verify the anchor shows a checked state; if not, reload and retry
                 anchor_ok = False
                 try:
