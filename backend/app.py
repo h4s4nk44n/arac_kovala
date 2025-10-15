@@ -256,12 +256,64 @@ def scrape_sahibinden(sb, url, known_posts):
                 print(f"Saved pre-captcha screenshot: {pre_cap_path}")
             except Exception as _e:
                 print("Failed to capture pre-captcha screenshot:", _e)
-            # There can be multiple challenge iframe title variants
-            challenge_iframe_selector = 'iframe[title*="recaptcha challenge"], iframe[src*="recaptcha"], iframe[name*="c-" ]'
-            sb.wait_for_element_present(challenge_iframe_selector, timeout=20)
-            challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
-            sb.switch_to_frame(challenge_iframe_element)
-            print("Switched to CAPTCHA challenge iframe.")
+            # Try to switch to the visible challenge iframe first; if not found, fall back to scanning all iframes
+            challenge_iframe_element = None
+            try:
+                challenge_iframe_selector = 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'
+                sb.wait_for_element_present(challenge_iframe_selector, timeout=20)
+                challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
+                sb.switch_to_frame(challenge_iframe_element)
+                print("Switched to CAPTCHA challenge iframe (direct selector).")
+            except Exception as _e1:
+                print("Direct challenge iframe wait failed, scanning all iframes...", _e1)
+                try:
+                    # Click the anchor checkbox if present to trigger the challenge
+                    try:
+                        sb.switch_to_default_content()
+                    except Exception:
+                        pass
+                    anchor_iframe_selector = 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]'
+                    if sb.is_element_present(anchor_iframe_selector):
+                        try:
+                            anchor_iframe = sb.find_element("css selector", anchor_iframe_selector)
+                            sb.switch_to_frame(anchor_iframe)
+                            if sb.is_element_present('#recaptcha-anchor'):
+                                try:
+                                    sb.click('#recaptcha-anchor')
+                                except Exception:
+                                    sb.js_click('#recaptcha-anchor')
+                            sb.switch_to_default_content()
+                            sb.sleep(1.0)
+                        except Exception:
+                            try:
+                                sb.switch_to_default_content()
+                            except Exception:
+                                pass
+
+                    # Enumerate all iframes to find the challenge
+                    try:
+                        frames = sb.find_elements('css selector', 'iframe')
+                    except Exception:
+                        frames = []
+                    for fr in frames:
+                        try:
+                            sb.switch_to_frame(fr)
+                            if sb.is_element_present('#recaptcha-audio-button') or sb.is_element_present('.rc-imageselect') or sb.is_element_present('button#recaptcha-verify-button'):
+                                challenge_iframe_element = fr
+                                print("Found CAPTCHA challenge by scanning iframes.")
+                                break
+                            sb.switch_to_default_content()
+                        except Exception:
+                            try:
+                                sb.switch_to_default_content()
+                            except Exception:
+                                pass
+                    if challenge_iframe_element is None:
+                        print("Could not locate a visible reCAPTCHA challenge iframe.")
+                        return False
+                except Exception as _e2:
+                    print("Scanning iframes for challenge failed:", _e2)
+                    return False
 
             # Screenshot inside the challenge for debugging
             try:
