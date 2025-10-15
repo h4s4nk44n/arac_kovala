@@ -288,8 +288,8 @@ def scrape_sahibinden(driver, url, known_posts):
             # --- HUMAN-LIKE ENHANCEMENT 1: Hover before clicking ---
             # This simulates a user moving their mouse over the button before clicking it.
             audio_button_selector = "#recaptcha-audio-button"
-            driver.hover_and_click(audio_button_selector, audio_button_selector)
-            print("Hovered and clicked the audio challenge button.")
+            driver.uc_click(audio_button_selector)
+            print("Clicked the audio challenge button.")
 
             # --- HUMAN-LIKE ENHANCEMENT 2: Use randomized delays ---
             # Instead of a fixed sleep, a random pause appears more natural.
@@ -297,8 +297,8 @@ def scrape_sahibinden(driver, url, known_posts):
 
             buster_button_selector = ".help-button-holder"
             # Use hover_and_click again for the Buster button.
-            driver.hover_and_click(buster_button_selector, buster_button_selector)
-            print("Hovered and clicked the Buster 'solve' button.")
+            driver.uc_click(buster_button_selector)
+            print("Clicked the Buster 'solve' button.")
 
             driver.switch_to.default_content()
             print("Waiting for Buster to solve the audio challenge...")
