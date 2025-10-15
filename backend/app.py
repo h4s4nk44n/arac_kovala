@@ -273,7 +273,7 @@ def scrape_sahibinden(sb, url, known_posts):
         except Exception as e:
             print("save cookies failed:", e)
 
-    def solve_captcha_with_buster(sb):
+    def solve_captcha_with_buster(sb, attempt: int = 1):
         print("Attempting to solve CAPTCHA using Buster (audio method)...")
         try:
             # Save a screenshot before any CAPTCHA interactions
@@ -534,14 +534,84 @@ def scrape_sahibinden(sb, url, known_posts):
             except Exception:
                 pass
 
+            # Short wait for solve; if not solved, try reloading the challenge and retry up to 3 attempts
             try:
-                long_wait = WebDriverWait(sb.driver, 180)
-                long_wait.until(EC.staleness_of(challenge_iframe_element))
+                WebDriverWait(sb.driver, 40).until(
+                    EC.invisibility_of_element_located((By.CSS_SELECTOR, 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'))
+                )
                 print("CAPTCHA solved successfully! The challenge has disappeared.")
                 return True
             except Exception:
-                print("Challenge iframe still present after waiting. CAPTCHA may not be solved.")
-                return False
+                print("Challenge iframe still present after waiting.")
+                if attempt >= 3:
+                    print("Max CAPTCHA attempts reached.")
+                    return False
+
+                print(f"Attempting CAPTCHA reload (attempt {attempt+1})...")
+                # Try to click the reload button inside the challenge frame, then recurse
+                try:
+                    # Re-find a challenge frame to enter
+                    cf = None
+                    try:
+                        frames = sb.find_elements('css selector', 'iframe')
+                    except Exception:
+                        frames = []
+                    for fr in frames:
+                        try:
+                            sb.switch_to_frame(fr)
+                            if sb.is_element_present('#recaptcha-reload-button') or sb.is_element_present('.rc-button-reload'):
+                                cf = fr
+                                break
+                            sb.switch_to_default_content()
+                        except Exception:
+                            try:
+                                sb.switch_to_default_content()
+                            except Exception:
+                                pass
+                    if cf is None:
+                        # Fall back to the earlier located iframe if still attached
+                        try:
+                            sb.switch_to_frame(challenge_iframe_element)
+                        except Exception:
+                            pass
+                    # Click reload
+                    reload_selectors = ['#recaptcha-reload-button', 'button#recaptcha-reload-button', '.rc-button-reload']
+                    reloaded = False
+                    for sel in reload_selectors:
+                        try:
+                            if sb.is_element_present(sel):
+                                try:
+                                    sb.cdp.click(sel)
+                                except Exception:
+                                    try:
+                                        sb.js_click(sel)
+                                    except Exception:
+                                        sb.click(sel)
+                                reloaded = True
+                                break
+                        except Exception:
+                            continue
+                    # Capture after-reload screenshot
+                    try:
+                        ts_rel = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                        sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_after_reload_{ts_rel}.png"))
+                    except Exception:
+                        pass
+                    # Leave frame and retry solver flow recursively
+                    try:
+                        sb.switch_to_default_content()
+                    except Exception:
+                        pass
+                    if not reloaded:
+                        print("Reload button not found; retrying solver anyway.")
+                    return solve_captcha_with_buster(sb, attempt=attempt+1)
+                except Exception as _r:
+                    print("Reload process failed:", _r)
+                    try:
+                        sb.switch_to_default_content()
+                    except Exception:
+                        pass
+                    return False
         except (TimeoutException, NoSuchFrameException):
             print("CAPTCHA challenge did not appear as expected or an element was not found.")
             print("Assuming no CAPTCHA was needed or it was solved by other means.")
