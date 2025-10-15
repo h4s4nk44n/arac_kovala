@@ -539,7 +539,85 @@ def scrape_sahibinden(sb, url, known_posts):
                 WebDriverWait(sb.driver, 40).until(
                     EC.invisibility_of_element_located((By.CSS_SELECTOR, 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'))
                 )
-                print("CAPTCHA solved successfully! The challenge has disappeared.")
+            print("CAPTCHA solved successfully! The challenge has disappeared.")
+                # Verify the anchor shows a checked state; if not, reload and retry
+                anchor_ok = False
+                try:
+                    sb.switch_to_default_content()
+                    anchor_iframe_selector = 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]'
+                    if sb.is_element_present(anchor_iframe_selector):
+                        ai = sb.find_element("css selector", anchor_iframe_selector)
+                        sb.switch_to_frame(ai)
+                        if sb.is_element_present('#recaptcha-anchor'):
+                            try:
+                                chk = sb.get_attribute('#recaptcha-anchor', 'aria-checked') or ''
+                            except Exception:
+                                chk = ''
+                            try:
+                                cls = sb.get_attribute('#recaptcha-anchor', 'class') or ''
+                            except Exception:
+                                cls = ''
+                            anchor_ok = (str(chk).lower() == 'true') or ('recaptcha-checkbox-checked' in cls)
+                        sb.switch_to_default_content()
+                except Exception:
+                    pass
+                if not anchor_ok:
+                    print("Anchor not verified after solve; reloading challenge and retrying...")
+                    try:
+                        # Try clicking reload in any challenge frame
+                        cf = None
+                        try:
+                            frames = sb.find_elements('css selector', 'iframe')
+                        except Exception:
+                            frames = []
+                        for fr in frames:
+                            try:
+                                sb.switch_to_frame(fr)
+                                if sb.is_element_present('#recaptcha-reload-button') or sb.is_element_present('.rc-button-reload'):
+                                    cf = fr
+                                    break
+                                sb.switch_to_default_content()
+                            except Exception:
+                                try:
+                                    sb.switch_to_default_content()
+                                except Exception:
+                                    pass
+                        if cf is not None:
+                            for sel in ('#recaptcha-reload-button', '.rc-button-reload'):
+                                try:
+                                    if sb.is_element_present(sel):
+                                        try:
+                                            sb.cdp.click(sel)
+                                        except Exception:
+                                            try:
+                                                sb.js_click(sel)
+                                            except Exception:
+                                                sb.click(sel)
+                                        break
+                                except Exception:
+                                    continue
+                            try:
+                                sb.switch_to_default_content()
+                            except Exception:
+                                pass
+                        else:
+                            # If no reload located, click the anchor to reopen challenge
+                            try:
+                                sb.switch_to_default_content()
+                                if sb.is_element_present('iframe[title="reCAPTCHA"], iframe[src*="anchor"]'):
+                                    ai = sb.find_element('css selector', 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]')
+                                    sb.switch_to_frame(ai)
+                                    if sb.is_element_present('#recaptcha-anchor'):
+                                        try:
+                                            sb.click('#recaptcha-anchor')
+                                        except Exception:
+                                            sb.js_click('#recaptcha-anchor')
+                                    sb.switch_to_default_content()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    return solve_captcha_with_buster(sb, attempt=attempt+1)
                 try:
                     ts_solved = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                     sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_solved_{ts_solved}.png"))
