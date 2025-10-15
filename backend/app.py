@@ -680,7 +680,7 @@ def _scrape_loop(poll_seconds: int = 60):
                                 current_posts = POSTS.get(fid,)
                                 combined_posts = new_posts + current_posts
                                 
-                                unique_posts =
+                                unique_posts = []
                                 seen_ids_in_list = set()
                                 for post in combined_posts:
                                     if post['id'] not in seen_ids_in_list:
