@@ -291,11 +291,18 @@ def scrape_sahibinden(sb, url, known_posts):
             loaded_count = 0
             for cookie in cookies:
                 try:
-                    clean_cookie = { "name": cookie["name"], "value": cookie["value"], "domain": cookie["domain"] }
-                    if "path" in cookie: clean_cookie["path"] = cookie["path"]
-                    if "secure" in cookie: clean_cookie["secure"] = cookie["secure"]
-                    if "expiry" in cookie: clean_cookie["expiry"] = cookie["expiry"]
-                    elif "expirationDate" in cookie: clean_cookie["expiry"] = int(cookie)
+                    clean_cookie = { "name": cookie.get("name"), "value": cookie.get("value") }
+                    # Optional fields
+                    if cookie.get("domain"): clean_cookie["domain"] = cookie["domain"]
+                    if cookie.get("path"): clean_cookie["path"] = cookie["path"]
+                    if "secure" in cookie: clean_cookie["secure"] = bool(cookie.get("secure"))
+                    # Normalize expiry
+                    if "expiry" in cookie and isinstance(cookie["expiry"], (int, float)):
+                        clean_cookie["expiry"] = int(cookie["expiry"])
+                    elif "expirationDate" in cookie:
+                        exp = cookie.get("expirationDate")
+                        if isinstance(exp, (int, float)):
+                            clean_cookie["expiry"] = int(exp)
                     sb.add_cookie(clean_cookie)
                     loaded_count += 1
                 except Exception as e:
@@ -323,11 +330,11 @@ def scrape_sahibinden(sb, url, known_posts):
         now = time.time()
         if meta["attempts"] >= MAX_LOGIN_ATTEMPTS:
             print("Max login attempts reached; backing off.")
-            return set(),
+            return set(), []
         if meta["attempts"] > 0 and now - meta["last"] < LOGIN_COOLDOWN_SEC:
             wait_left = int(LOGIN_COOLDOWN_SEC - (now - meta["last"]))
             print(f"Login cooldown active ({wait_left}s left); skipping.")
-            return set(),
+            return set(), []
         meta["attempts"] += 1
         meta["last"] = now
         try:
@@ -354,7 +361,7 @@ def scrape_sahibinden(sb, url, known_posts):
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_failed_{timestamp}.png")
                 sb.save_screenshot(screenshot_path)
-                return set(),
+                return set(), []
             else:
                 print("Login successful!")
                 _save_current_cookies()
@@ -363,14 +370,14 @@ def scrape_sahibinden(sb, url, known_posts):
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_error_{timestamp}.png")
             sb.save_screenshot(screenshot_path)
-            return set(),
+            return set(), []
 
     print("Proceeding to scrape data...")
     try:
         sb.wait_for_element_visible("tr.searchResultsItem", timeout=15)
     except Exception as e:
         print(f"Search results not found or page did not load correctly: {e}")
-        return set(),
+        return set(), []
 
     new_posts = []
     seen_new_ids = set()
@@ -567,7 +574,7 @@ def _scrape_loop(poll_seconds: int = 60):
                                 p['filter_name'] = flt.get('name')
                             
                             with STATE_LOCK:
-                                current_posts = POSTS.get(fid,)
+                                current_posts = POSTS.get(fid, [])
                                 combined_posts = new_posts + current_posts
                                 
                                 unique_posts = []
