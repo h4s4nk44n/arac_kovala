@@ -206,7 +206,6 @@ def scrape_sahibinden(sb, url, known_posts):
     SESSION_COOKIES_JSON = os.getenv("SESSION_COOKIES_JSON")
     SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
-    ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "1").lower() in ("1", "true", "yes")
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "1"))
     LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))
     
@@ -219,7 +218,7 @@ def scrape_sahibinden(sb, url, known_posts):
 
     def _is_on_login():
         try:
-            u = (sb.current_url or "").lower()
+            u = (sb.get_current_url() or "").lower()
             return ("login" in u or "giris" in u or sb.is_element_visible("#username"))
         except Exception:
             return False
@@ -232,30 +231,6 @@ def scrape_sahibinden(sb, url, known_posts):
         except Exception:
             pass
 
-    def _handle_captcha_if_any(sb):
-        try:
-            # Wait up to 5 seconds for either a reCAPTCHA or hCaptcha iframe to be visible
-            wait = WebDriverWait(sb, 5)
-            
-            # Use a more flexible CSS selector to find either type of CAPTCHA
-            # This looks for an iframe with a src containing 'recaptcha' OR 'hcaptcha'
-            captcha_iframe_selector = 'iframe[src*="recaptcha"], iframe[src*="hcaptcha"]'
-            
-            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, captcha_iframe_selector)))
-            
-            print("CAPTCHA detected. Attempting to click it...")
-            # Assuming you're using SeleniumBase's uc_gui_click_captcha()
-            sb.uc_gui_click_captcha() 
-            print("Waiting for CAPTCHA to verify after click...")
-            time.sleep(3)
-
-        except TimeoutException:
-            # This block will run if no CAPTCHA iframe becomes visible within 5 seconds
-            print("No CAPTCHA detected on the page. Skipping CAPTCHA click.")
-        except Exception as e:
-            print(f"An error occurred while handling CAPTCHA: {e}")
-
-
     def _save_current_cookies():
         try:
             import json as _json
@@ -265,19 +240,7 @@ def scrape_sahibinden(sb, url, known_posts):
         except Exception as e:
             print("save cookies failed:", e)
 
-    def solve_captcha_with_buster(sb: WebDriver):
-        """
-        Solves a reCAPTCHA challenge by switching to the audio version
-        and using the Buster browser extension to solve it. This function
-        is designed to handle the image/audio challenge that appears after
-        the initial "I'm not a robot" checkbox is clicked.
-
-        Args:
-            sb: The SeleniumBase SB instance.
-        
-        Returns:
-            bool: True if the CAPTCHA was likely solved, False otherwise.
-        """
+    def solve_captcha_with_buster(sb):
         print("Attempting to solve CAPTCHA using Buster (audio method)...")
         try:
             challenge_iframe_selector = 'iframe[title*="recaptcha challenge"]'
@@ -286,7 +249,6 @@ def scrape_sahibinden(sb, url, known_posts):
             sb.switch_to_frame(challenge_iframe_element)
             print("Switched to CAPTCHA challenge iframe.")
 
-            # --- HUMAN-LIKE ACTION: Hover then uc_click ---
             audio_button_selector = "#recaptcha-audio-button"
             sb.wait_for_element_visible(audio_button_selector, timeout=10)
             sb.hover(audio_button_selector)
@@ -295,7 +257,6 @@ def scrape_sahibinden(sb, url, known_posts):
 
             sb.sleep(random.uniform(1.5, 2.5))
 
-            # --- NEW: Use GUI click for shadow-root element ---
             buster_button_selector = ".help-button-holder"
             sb.wait_for_element_visible(buster_button_selector, timeout=10)
             print("Buster button found. Attempting GUI click to bypass shadow-root...")
@@ -310,7 +271,6 @@ def scrape_sahibinden(sb, url, known_posts):
             
             print("CAPTCHA solved successfully! The challenge has disappeared.")
             return True
-
         except (TimeoutException, NoSuchFrameException):
             print("CAPTCHA challenge did not appear as expected or an element was not found.")
             print("Assuming no CAPTCHA was needed or it was solved by other means.")
@@ -321,66 +281,45 @@ def scrape_sahibinden(sb, url, known_posts):
             sb.switch_to_default_content()
             return False
 
-    # --- NEW: PRIMARY LOGIN STRATEGY USING COOKIES ---
     if SESSION_COOKIES_JSON:
         print("Attempting to load session from SESSION_COOKIES_JSON...")
         cookies_loaded_successfully = False
         try:
-            # 1. Go to the base domain FIRST.
             sb.get("https://www.sahibinden.com/")
             _accept_cookie_banner_if_any()
-
             cookies = json.loads(SESSION_COOKIES_JSON)
             loaded_count = 0
-            
-            # 2. Add cookies one by one, skipping any that cause an error.
             for cookie in cookies:
                 try:
-                    # Clean the cookie to a format the driver accepts
-                    clean_cookie = {
-                        "name": cookie["name"],
-                        "value": cookie["value"],
-                        "domain": cookie["domain"],
-                    }
+                    clean_cookie = { "name": cookie["name"], "value": cookie["value"], "domain": cookie["domain"] }
                     if "path" in cookie: clean_cookie["path"] = cookie["path"]
                     if "secure" in cookie: clean_cookie["secure"] = cookie["secure"]
                     if "expiry" in cookie: clean_cookie["expiry"] = cookie["expiry"]
                     elif "expirationDate" in cookie: clean_cookie["expiry"] = int(cookie)
-
                     sb.add_cookie(clean_cookie)
                     loaded_count += 1
                 except Exception as e:
                     print(f"Warning: Could not add cookie '{cookie.get('name')}'. Reason: {e}")
-            
             if loaded_count > 0:
                 print(f"Successfully loaded {loaded_count}/{len(cookies)} cookies.")
                 cookies_loaded_successfully = True
-
-            # 3. Navigate to the final target URL with the active session
             print("Navigating to target URL with session...")
             sb.get(url)
             _accept_cookie_banner_if_any()
             time.sleep(2)
-
         except Exception as e:
             print(f"A critical error occurred during cookie loading: {e}. Falling back to standard login.")
             sb.uc_open_with_reconnect(url, 4)
             _accept_cookie_banner_if_any()
-            
         if not cookies_loaded_successfully:
             sb.uc_open_with_reconnect(url, 4)
             _accept_cookie_banner_if_any()
-
     else:
-        # Navigate normally if no cookies are provided
         sb.uc_open_with_reconnect(url, 4)
         _accept_cookie_banner_if_any()
 
-
-    # ----------------- FALLBACK: LOGIN IF FORCED -----------------
     if _is_on_login():
         print("Redirected to login page. Attempting robust login...")
-
         now = time.time()
         if meta["attempts"] >= MAX_LOGIN_ATTEMPTS:
             print("Max login attempts reached; backing off.")
@@ -389,43 +328,27 @@ def scrape_sahibinden(sb, url, known_posts):
             wait_left = int(LOGIN_COOLDOWN_SEC - (now - meta["last"]))
             print(f"Login cooldown active ({wait_left}s left); skipping.")
             return set(),
-        
         meta["attempts"] += 1
         meta["last"] = now
-        
         try:
-            # --- NEW: Activate CDP Mode for maximum stealth ---
             print("Activating CDP Mode for stealthy login...")
             sb.activate_cdp_mode()
-
             print("Typing username using CDP...")
-            # Use cdp.press_keys for more human-like typing
             sb.cdp.press_keys("#username", SAHIBINDEN_USER)
             sb.sleep(random.uniform(0.5, 1.0))
-
             print("Typing password using CDP...")
             sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
             sb.sleep(random.uniform(0.5, 1.0))
-            
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"before_login_click_{timestamp}.png")
             sb.save_screenshot(screenshot_path)
             print(f"Saved screenshot before login click to: {screenshot_path}")
-
             print("Clicking login button using CDP...")
             sb.cdp.click("#userLoginSubmitButton")
-            
-            # Give the page a moment to present the CAPTCHA after the click
             print("Waiting for page to react after login click...")
             sb.sleep(5)
-
-            # Now, attempt to solve the CAPTCHA which should have appeared
             solve_captcha_with_buster(sb)
-            
-            # After solving, wait a bit more to ensure the page has loaded
             sb.sleep(3)
-            
-            # Check if we are still on the login page. If so, it failed.
             if _is_on_login():
                 print("Login failed, still on login page after CAPTCHA attempt.")
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -435,17 +358,13 @@ def scrape_sahibinden(sb, url, known_posts):
             else:
                 print("Login successful!")
                 _save_current_cookies()
-
-
         except Exception as e:
             print(f"An exception occurred during the CDP login process: {e}")
-            # Save a screenshot on error for debugging
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_error_{timestamp}.png")
             sb.save_screenshot(screenshot_path)
             return set(),
-            
-    # ----------------- scrape -----------------
+
     print("Proceeding to scrape data...")
     try:
         sb.wait_for_element_visible("tr.searchResultsItem", timeout=15)
@@ -457,11 +376,8 @@ def scrape_sahibinden(sb, url, known_posts):
     seen_new_ids = set()
     post_elements = sb.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
-    
-    # 3. Add a log message if no posts are found
     if not post_elements:
         print("No ad listings found on the page.")
-
     for post in post_elements:
         post_id = post.get_attribute('data-id')
         if not post_id or 'nativeAd' in post.get_attribute('class'):
@@ -473,44 +389,33 @@ def scrape_sahibinden(sb, url, known_posts):
                 title_text = title_el.text.strip()
                 if not title_text or title_text.lower().startswith('www.sahibinden.com'):
                     continue
-
                 model = post.find_element('css selector', '.searchResultsTagAttributeValue,.searchResultsAttributeValue').text.strip()
-
                 price = post.find_element('css selector', '.searchResultsPriceValue span').text.strip()
                 href = title_el.get_attribute('href')
-                
                 parsed = urlparse(href or '')
                 raw_segments = [seg for seg in (parsed.path or '').split('/') if seg]
-
                 brand = ''
                 serie = ''
-
-                # Find the category segment and extract brand/serie after it
                 category_slugs = ['otomobil', 'arazi-suv-pickup']
                 cat_idx = -1
                 for slug in category_slugs:
                     if slug in raw_segments:
                         cat_idx = raw_segments.index(slug)
                         break
-
                 if cat_idx!= -1:
-                    # Brand is next segment, serie is the one after (if present)
                     if len(raw_segments) > cat_idx + 1:
                         brand = raw_segments[cat_idx + 1].replace('-', ' ').strip().title()
                     if len(raw_segments) > cat_idx + 2:
                         serie = raw_segments[cat_idx + 2].replace('-', ' ').strip().title()
                 else:
-                    # fallback: old logic
                     IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi', 'suv', 'pickup'}
-                    filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS] 
+                    filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS]
                     all_words = '-'.join(filtered_segments).split('-')
-                    car_info_parts = [part for part in all_words if part not in IGNORE_WORDS] 
+                    car_info_parts = [w for w in all_words if w]
                     if len(car_info_parts) > 0:
-                        brand = car_info_parts.replace('-', ' ').strip().title()
+                        brand = car_info_parts[0].replace('-', ' ').strip().title()
                     if len(car_info_parts) > 1:
-                        serie = car_info_parts[1].replace('-', ' ').strip().title() 
-
-
+                        serie = car_info_parts[1].replace('-', ' ').strip().title()
                 print(f"brand : {brand}, serie : {serie}")
                 def _attr_texts(elem):
                     try:
@@ -520,12 +425,11 @@ def scrape_sahibinden(sb, url, known_posts):
                         return [c.text.strip() for c in cells if c.text]
                     except Exception:
                         return
-
                 attrs = _attr_texts(post)
                 year_val, km_val = None, None
                 if attrs:
                     try:
-                        year_digits = re.sub(r'[^0-9]', '', (attrs if len(attrs) > 0 else ''))
+                        year_digits = re.sub(r'[^0-9]', '', (attrs[0] if len(attrs) > 0 else ''))
                         year_val = int(year_digits) if len(year_digits) >= 4 else None
                     except Exception:
                         year_val = None
@@ -534,31 +438,24 @@ def scrape_sahibinden(sb, url, known_posts):
                         km_val = int(km_digits) if km_digits else None
                     except Exception:
                         km_val = None
-
                 if not all([href, brand, price, model, year_val, km_val]):
                     continue
-
                 thumb = _extract_img_src(post)
                 saved_name = _download_image(thumb, post_id) if thumb else None
-
                 custom_title = f"{brand} {model} {title_text}"
-
                 new_posts.append({
                     "id": post_id, "brand": brand, "serie": serie, "model": model,
                     "price": price, "url": href, "year": year_val, "km": km_val,
                     "image": saved_name, "title": custom_title,
                 })
-
                 print(f"id: {post_id}, brand: {brand}, serie: {serie}, model: {model}, price: {price}, url: {href}, year: {year_val}, km: {km_val}")
                 seen_new_ids.add(post_id)
             except Exception as e:
                 print(f"Error scraping post with ID {post_id}: {e}")
-
     if new_posts:
         print(f"Found {len(new_posts)} new posts.")
     else:
         print("Scrape complete. No new posts found on this run.")
-    current_ids = set()
     return current_ids, new_posts
 
 
