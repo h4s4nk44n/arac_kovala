@@ -211,6 +211,11 @@ def scrape_sahibinden(sb, url, known_posts):
     
     SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
     os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+    # Ensure HTML snapshots directory exists for debugging login page issues
+    try:
+        os.makedirs(HTML_SNAPSHOTS_DIR, exist_ok=True)
+    except Exception:
+        pass
 
     if not hasattr(sb, "_login_meta"):
         sb._login_meta = {"attempts": 0, "last": 0.0}
@@ -340,6 +345,25 @@ def scrape_sahibinden(sb, url, known_posts):
         try:
             print("Activating CDP Mode for stealthy login...")
             sb.activate_cdp_mode()
+            # Capture immediate screenshot and HTML snapshot for diagnostics
+            try:
+                ts0 = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                pre_login_shot = os.path.join(SCREENSHOTS_DIR, f"login_page_{ts0}.png")
+                sb.save_screenshot(pre_login_shot)
+                try:
+                    html_source = sb.get_page_source()
+                except Exception:
+                    try:
+                        html_source = sb.driver.page_source
+                    except Exception:
+                        html_source = ""
+                if html_source:
+                    pre_login_html = os.path.join(HTML_SNAPSHOTS_DIR, f"login_page_{ts0}.html")
+                    with open(pre_login_html, 'w', encoding='utf-8') as f:
+                        f.write(html_source)
+                print(f"Saved login page screenshot: {pre_login_shot}")
+            except Exception as _e:
+                print(f"Failed to capture early login snapshots: {_e}")
             # Ensure consent overlays don't block fields on the login page
             _accept_cookie_banner_if_any()
             # Wait for fields to be visible
