@@ -503,7 +503,7 @@ def scrape_sahibinden(driver, url, known_posts):
                     IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi', 'suv', 'pickup'}
                     filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS] 
                     all_words = '-'.join(filtered_segments).split('-')
-                    car_info_parts =
+                    car_info_parts = [part for part in all_words if part not in IGNORE_WORDS] 
                     if len(car_info_parts) > 0:
                         brand = car_info_parts.replace('-', ' ').strip().title()
                     if len(car_info_parts) > 1:
