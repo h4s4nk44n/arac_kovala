@@ -264,48 +264,61 @@ def scrape_sahibinden(driver, url, known_posts):
         except Exception as e:
             print("save cookies failed:", e)
 
-    def solve_captcha_automatically(driver: WebDriver):
+    def solve_captcha_with_buster(driver: WebDriver):
         """
-        Handles an automatic CAPTCHA solver by waiting for the challenge to appear
-        and then disappear.
-
-        This function assumes a browser extension is solving the CAPTCHA automatically
-        in the background without any clicks required.
+        Solves a reCAPTCHA challenge by switching to the audio version
+        and using the Buster browser extension to solve it. This function
+        is designed to handle the image/audio challenge that appears after
+        the initial "I'm not a robot" checkbox is clicked.
 
         Args:
-            driver: The Selenium WebDriver instance.
-
+            driver: The SeleniumBase WebDriver instance, which is a subclass of WebDriver.
+        
         Returns:
-            bool: True if the CAPTCHA was detected and then disappeared, False otherwise.
+            bool: True if the CAPTCHA was likely solved, False otherwise.
         """
-        print("Checking for a CAPTCHA challenge...")
+        print("Attempting to solve CAPTCHA using Buster (audio method)...")
         try:
-            wait = WebDriverWait(driver, 15)  # Wait up to 15 seconds for a CAPTCHA to show up
+            challenge_iframe_selector = 'iframe[title*="recaptcha challenge"]'
+            driver.wait_for_element_visible(challenge_iframe_selector, timeout=15)
+            challenge_iframe_element = driver.find_element("css selector", challenge_iframe_selector)
+            driver.switch_to.frame(challenge_iframe_element)
+            print("Switched to CAPTCHA challenge iframe.")
 
-            # Step 1: Wait for any reCAPTCHA or hCaptcha iframe to become visible.
-            # This confirms a challenge has been presented.
-            captcha_iframe_selector = 'iframe[src*="recaptcha"], iframe[src*="hcaptcha"]'
-            challenge_iframe = wait.until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, captcha_iframe_selector))
-            )
-            print("CAPTCHA detected. Waiting for automatic solver to complete...")
+            # --- HUMAN-LIKE ENHANCEMENT 1: Hover before clicking ---
+            # This simulates a user moving their mouse over the button before clicking it.
+            audio_button_selector = "#recaptcha-audio-button"
+            driver.hover_and_click(audio_button_selector, audio_button_selector)
+            print("Hovered and clicked the audio challenge button.")
 
-            # Step 2: Now, wait up to 2 minutes for that same iframe to disappear.
-            # This is the "smart wait" that gives the solver the time it needs.
+            # --- HUMAN-LIKE ENHANCEMENT 2: Use randomized delays ---
+            # Instead of a fixed sleep, a random pause appears more natural.
+            driver.sleep(random.uniform(1.5, 2.5))
+
+            buster_button_selector = ".help-button-holder"
+            # Use hover_and_click again for the Buster button.
+            driver.hover_and_click(buster_button_selector, buster_button_selector)
+            print("Hovered and clicked the Buster 'solve' button.")
+
+            driver.switch_to.default_content()
+            print("Waiting for Buster to solve the audio challenge...")
+
             long_wait = WebDriverWait(driver, 120)
-            long_wait.until(EC.staleness_of(challenge_iframe))
+            long_wait.until(EC.staleness_of(challenge_iframe_element))
             
             print("CAPTCHA solved successfully! The challenge has disappeared.")
             return True
 
-        except TimeoutException:
-            # This will trigger if no CAPTCHA appears in the first 15 seconds,
-            # or if the solver takes more than 2 minutes to finish.
-            print("No CAPTCHA was detected, or the automatic solver timed out.")
+        except (TimeoutException, NoSuchFrameException):
+            print("CAPTCHA challenge did not appear as expected or an element was not found.")
+            print("Assuming no CAPTCHA was needed or it was solved by other means.")
+            driver.switch_to.default_content()
             return False
         except Exception as e:
-            print(f"An unexpected error occurred while waiting for the CAPTCHA solution: {e}")
+            print(f"An unexpected error occurred during CAPTCHA solving: {e}")
+            driver.switch_to.default_content()
             return False
+
 
     # --- NEW: PRIMARY LOGIN STRATEGY USING COOKIES ---
     if SESSION_COOKIES_JSON:
@@ -426,7 +439,7 @@ def scrape_sahibinden(driver, url, known_posts):
             except Exception as e:
                 print(f"Could not save HTML snapshot. Error: {e}")
 
-            solve_captcha_automatically(driver)
+            solve_captcha_with_buster(driver)
 
             # (Your entire human-like login block is preserved here)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
