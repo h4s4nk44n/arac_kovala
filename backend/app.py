@@ -98,7 +98,7 @@ def _add_cookies_for_host(sb, host_url: str, cookies: list):
         cookie = {k: v for k, v in c.items() if not k.startswith("_")}
         host_hint = c.get("_host_hint", "")
         is_host_only = ("domain" not in cookie)
-        if is_host_only and host_hint and host_hint != current_host:
+        if is_host_only and host_hint and host_hint!= current_host:
             continue
         try:
             sb.add_cookie(cookie)
