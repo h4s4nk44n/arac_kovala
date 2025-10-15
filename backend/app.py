@@ -340,18 +340,61 @@ def scrape_sahibinden(sb, url, known_posts):
         try:
             print("Activating CDP Mode for stealthy login...")
             sb.activate_cdp_mode()
+            # Ensure consent overlays don't block fields on the login page
+            _accept_cookie_banner_if_any()
+            # Wait for fields to be visible
+            try:
+                sb.wait_for_element_visible("#username", timeout=20)
+                sb.wait_for_element_visible("#password", timeout=20)
+            except Exception:
+                # Give the page a moment and try once more
+                sb.sleep(1.5)
+                sb.wait_for_element_visible("#username", timeout=10)
+                sb.wait_for_element_visible("#password", timeout=10)
             print("Typing username using CDP...")
-            sb.cdp.press_keys("#username", SAHIBINDEN_USER)
+            try:
+                sb.cdp.click("#username")
+            except Exception:
+                pass
+            try:
+                sb.cdp.press_keys("#username", SAHIBINDEN_USER)
+            except Exception:
+                sb.type("#username", SAHIBINDEN_USER)
             sb.sleep(random.uniform(0.5, 1.0))
             print("Typing password using CDP...")
-            sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
+            try:
+                sb.cdp.click("#password")
+            except Exception:
+                pass
+            try:
+                sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
+            except Exception:
+                sb.type("#password", SAHIBINDEN_PASS)
             sb.sleep(random.uniform(0.5, 1.0))
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_path = os.path.join(SCREENSHOTS_DIR, f"before_login_click_{timestamp}.png")
             sb.save_screenshot(screenshot_path)
             print(f"Saved screenshot before login click to: {screenshot_path}")
             print("Clicking login button using CDP...")
-            sb.cdp.click("#userLoginSubmitButton")
+            clicked_login = False
+            try:
+                sb.cdp.click("#userLoginSubmitButton")
+                clicked_login = True
+            except Exception:
+                try:
+                    sb.click("#userLoginSubmitButton")
+                    clicked_login = True
+                except Exception:
+                    pass
+            if not clicked_login:
+                try:
+                    sb.cdp.press_keys("#password", "\n")
+                    clicked_login = True
+                except Exception:
+                    try:
+                        sb.press_keys("#password", "\n")
+                    except Exception:
+                        pass
             print("Waiting for page to react after login click...")
             sb.sleep(5)
             solve_captcha_with_buster(sb)
