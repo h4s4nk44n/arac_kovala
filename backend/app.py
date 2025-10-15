@@ -507,7 +507,7 @@ def scrape_sahibinden(driver, url, known_posts):
                     if len(car_info_parts) > 0:
                         brand = car_info_parts.replace('-', ' ').strip().title()
                     if len(car_info_parts) > 1:
-                        serie = car_info_parts.[1]replace('-', ' ').strip().title()
+                        serie = car_info_parts[1].replace('-', ' ').strip().title() 
 
 
                 print(f"brand : {brand}, serie : {serie}")
