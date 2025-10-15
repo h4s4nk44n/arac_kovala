@@ -659,7 +659,7 @@ def scrape_sahibinden(sb, url, known_posts):
             except Exception:
                 pass
             try:
-            sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
+                sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
             except Exception:
                 sb.type("#password", SAHIBINDEN_PASS)
             sb.sleep(random.uniform(0.5, 1.0))
