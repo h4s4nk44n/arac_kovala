@@ -398,10 +398,49 @@ def scrape_sahibinden(sb, url, known_posts):
 
                 # Try multiple click strategies, prioritizing GUI and coordinate clicks
                 clicked = False
-                for click_try in ("cdp_gui", "coords", "cdp", "normal", "js"):
+                for click_try in ("cdp_gui", "coords_abs", "coords", "cdp", "normal", "js"):
                     try:
                         if click_try == "cdp_gui":
                             sb.cdp.gui_click_element(found_selector)
+                        elif click_try == "coords_abs":
+                            # Compute absolute viewport coordinates: frame offset + host offset
+                            try:
+                                # Get frame rect from default content
+                                try:
+                                    sb.switch_to_default_content()
+                                except Exception:
+                                    pass
+                                frame_rect = sb.driver.execute_script(
+                                    "var r = arguments[0].getBoundingClientRect(); return {left:r.left, top:r.top};",
+                                    challenge_iframe_element,
+                                )
+                                # Back into frame to get host rect
+                                sb.switch_to_frame(challenge_iframe_element)
+                                if el is None:
+                                    el = sb.find_element("css selector", found_selector)
+                                host_rect = sb.driver.execute_script(
+                                    "var r = arguments[0].getBoundingClientRect(); return {left:r.left, top:r.top, width:r.width, height:r.height};",
+                                    el,
+                                )
+                                abs_x = int(frame_rect.get('left', 0) + host_rect.get('left', 0) + host_rect.get('width', 0)/2)
+                                abs_y = int(frame_rect.get('top', 0) + host_rect.get('top', 0) + host_rect.get('height', 0)/2)
+                                # Perform 2-3 clicks with slight jitter at absolute coords
+                                try:
+                                    sb.switch_to_default_content()
+                                except Exception:
+                                    pass
+                                for dx, dy in ((0,0), (1,1), (-1,-1)):
+                                    sb.cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": abs_x+dx, "y": abs_y+dy, "button": "left", "clickCount": 1})
+                                    sb.cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": abs_x+dx, "y": abs_y+dy, "button": "left", "clickCount": 1})
+                                    sb.sleep(0.15)
+                                # Return to frame context for subsequent steps
+                                try:
+                                    sb.switch_to_frame(challenge_iframe_element)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                # If absolute calc fails, fall back to next strategy
+                                pass
                         elif click_try == "coords":
                             if el is None:
                                 el = sb.find_element("css selector", found_selector)
@@ -422,6 +461,14 @@ def scrape_sahibinden(sb, url, known_posts):
                         clicked = True
                         print("Clicked Buster via:", click_try)
                         # small wait after click to allow UI to respond
+                        try:
+                            ts_after = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                            after_click_shot = os.path.join(SCREENSHOTS_DIR, f"captcha_after_click_{click_try}_{ts_after}.png")
+                            sb.save_screenshot(after_click_shot)
+                            print(f"Saved captcha after-click screenshot: {after_click_shot}")
+                        except Exception:
+                            pass
+                        
                         sb.sleep(1.0)
                         break
                     except Exception:
@@ -453,6 +500,11 @@ def scrape_sahibinden(sb, url, known_posts):
             # Return to default content and wait for the challenge iframe to disappear
             sb.switch_to_default_content()
             print("Waiting for Buster to solve the audio challenge...")
+            try:
+                ts_wait = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_wait_{ts_wait}.png"))
+            except Exception:
+                pass
 
             try:
                 long_wait = WebDriverWait(sb.driver, 180)
