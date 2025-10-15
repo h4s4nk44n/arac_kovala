@@ -404,7 +404,6 @@ def scrape_sahibinden(sb, url, known_posts):
                 page_source_len = 0
             if page_source_len < 300 or not sb.is_element_present("#username"):
                 LOGIN_URLS = [
-                    "https://www.sahibinden.com/kullanici/giris",
                     "https://secure2.sahibinden.com/giris",
                     "https://secure.sahibinden.com/giris",
                     "https://www.sahibinden.com/giris",
