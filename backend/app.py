@@ -637,12 +637,11 @@ def _scrape_loop(poll_seconds: int = 60):
                     print("WARNING: PROXY_STRING not set. Running without a proxy.")
                 
                 try:
-                    # Use the SB context manager for proper setup and teardown
+                    # CORRECTED: Removed invalid 'no_sandbox' and 'disable_gpu' arguments
                     with SB(
                         uc=True,
                         headless=False,  # Must be False for xvfb and GUI actions
                         xvfb=True,       # Use virtual display on server
-                        disable_gpu=True,
                         agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                                "AppleWebKit/537.36 (KHTML, like Gecko) "
                                "Chrome/120.0.0.0 Safari/537.36"),
@@ -651,19 +650,15 @@ def _scrape_loop(poll_seconds: int = 60):
                         proxy=proxy_string if proxy_string else None,
                         extension_dir="buster_chrome"
                     ) as sb:
-                        # Execute stealth script on new documents
                         sb.driver.execute_cdp_cmd(
                             "Page.addScriptToEvaluateOnNewDocument",
-                            {
-                                "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-                            },
+                            {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
                         )
 
                         fid = flt['id']
                         url = flt['url']
                         with STATE_LOCK: known = KNOWN_IDS.setdefault(fid, set())
                         
-                        # Pass the 'sb' object to the scraping function
                         current_ids, new_posts = scrape_sahibinden(sb, url, known)
                         
                         if new_posts:
@@ -704,7 +699,6 @@ def _scrape_loop(poll_seconds: int = 60):
                 except Exception as e:
                     print(f"Error during SB session for {flt.get('url')}: {e}")
                 
-                # The 'with SB(...)' block automatically handles closing the driver and display
                 print("SB session for this run has been closed.")
 
             print(f"Scrape cycle complete. Waiting for {poll_seconds} seconds...")
