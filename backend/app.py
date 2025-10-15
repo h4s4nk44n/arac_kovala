@@ -88,7 +88,7 @@ def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"
 def _add_cookies_for_host(driver, host_url: str, cookies: list):
     """Navigate to host_url, then add cookies. Host-only cookies only on exact host."""
     try:
-        driver.get(host_url)
+        sb.get(host_url)
         time.sleep(0.5)
     except Exception as e:
         print("navigate failed:", host_url, e)
@@ -101,7 +101,7 @@ def _add_cookies_for_host(driver, host_url: str, cookies: list):
         if is_host_only and host_hint and host_hint != current_host:
             continue
         try:
-            driver.add_cookie(cookie)
+            sb.add_cookie(cookie)
         except Exception as e:
             print("cookie add failed:", cookie.get("name"), e)
 
@@ -214,19 +214,19 @@ def scrape_sahibinden(driver, url, known_posts):
     os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
     meta = getattr(driver, "_login_meta", {"attempts": 0, "last": 0.0})
-    driver._login_meta = meta
+    sb._login_meta = meta
 
     def _is_on_login():
         try:
-            u = (driver.current_url or "").lower()
-            return ("login" in u or "giris" in u or driver.is_element_visible("#username"))
+            u = (sb.current_url or "").lower()
+            return ("login" in u or "giris" in u or sb.is_element_visible("#username"))
         except Exception:
             return False
 
     def _accept_cookie_banner_if_any():
         try:
-            if driver.is_element_present("#onetrust-accept-btn-handler"):
-                driver.js_click("#onetrust-accept-btn-handler")
+            if sb.is_element_present("#onetrust-accept-btn-handler"):
+                sb.js_click("#onetrust-accept-btn-handler")
                 time.sleep(0.5)
         except Exception:
             pass
@@ -244,7 +244,7 @@ def scrape_sahibinden(driver, url, known_posts):
             
             print("CAPTCHA detected. Attempting to click it...")
             # Assuming you're using SeleniumBase's uc_gui_click_captcha()
-            driver.uc_gui_click_captcha() 
+            sb.uc_gui_click_captcha() 
             print("Waiting for CAPTCHA to verify after click...")
             time.sleep(3)
 
@@ -259,7 +259,7 @@ def scrape_sahibinden(driver, url, known_posts):
         try:
             import json as _json
             with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
-                _json.dump(driver.get_cookies(), f)
+                _json.dump(sb.get_cookies(), f)
             print(f"Saved session cookies to {SESSION_COOKIE_FILE}")
         except Exception as e:
             print("save cookies failed:", e)
@@ -452,7 +452,7 @@ def scrape_sahibinden(driver, url, known_posts):
         print(f"Search results not found or page did not load correctly: {e}")
         return set(),
 
-    new_posts =
+    new_posts = set()
     seen_new_ids = set()
     post_elements = sb.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
