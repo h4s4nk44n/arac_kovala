@@ -452,7 +452,7 @@ def scrape_sahibinden(driver, url, known_posts):
         print(f"Search results not found or page did not load correctly: {e}")
         return set(),
 
-    new_posts = set()
+    new_posts = []
     seen_new_ids = set()
     post_elements = sb.find_elements('css selector', 'tr.searchResultsItem')
     current_ids = set()
@@ -501,7 +501,7 @@ def scrape_sahibinden(driver, url, known_posts):
                 else:
                     # fallback: old logic
                     IGNORE_WORDS = {'ilan', 'vasita', 'otomobil', 'arazi-suv-pickup', 'detay', 'arazi', 'suv', 'pickup'}
-                    filtered_segments =
+                    filtered_segments = [seg for seg in raw_segments if seg not in IGNORE_WORDS] 
                     all_words = '-'.join(filtered_segments).split('-')
                     car_info_parts =
                     if len(car_info_parts) > 0:
