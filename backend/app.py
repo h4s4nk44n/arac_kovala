@@ -292,13 +292,11 @@ def scrape_sahibinden(sb, url, known_posts):
         try:
             sb.get("https://www.sahibinden.com/")
             _accept_cookie_banner_if_any()
-            cookies = json.loads(SESSION_COOKIES_JSON)
-            loaded_count = 0
-            for cookie in cookies:
+            cookies_raw = json.loads(SESSION_COOKIES_JSON)
+            prepared = []
+            for cookie in cookies_raw:
                 try:
                     clean_cookie = { "name": cookie.get("name"), "value": cookie.get("value") }
-                    # Optional fields
-                    if cookie.get("domain"): clean_cookie["domain"] = cookie["domain"]
                     if cookie.get("path"): clean_cookie["path"] = cookie["path"]
                     if "secure" in cookie: clean_cookie["secure"] = bool(cookie.get("secure"))
                     # Normalize expiry
@@ -308,12 +306,29 @@ def scrape_sahibinden(sb, url, known_posts):
                         exp = cookie.get("expirationDate")
                         if isinstance(exp, (int, float)):
                             clean_cookie["expiry"] = int(exp)
-                    sb.add_cookie(clean_cookie)
-                    loaded_count += 1
+                    domain_val = cookie.get("domain")
+                    host_hint = ""
+                    if isinstance(domain_val, str) and domain_val:
+                        clean_cookie["domain"] = domain_val
+                        host_hint = domain_val.lstrip(".")
+                    clean_cookie["_host_hint"] = host_hint
+                    prepared.append(clean_cookie)
                 except Exception as e:
-                    print(f"Warning: Could not add cookie '{cookie.get('name')}'. Reason: {e}")
+                    print(f"Warning: Could not prepare cookie '{cookie.get('name')}': {e}")
+            # Prime cookies on relevant hosts
+            hosts = [
+                "https://www.sahibinden.com/",
+                "https://secure.sahibinden.com/",
+                "https://secure2.sahibinden.com/",
+            ]
+            for host in hosts:
+                try:
+                    _add_cookies_for_host(sb, host, prepared)
+                except Exception as e:
+                    print("Cookie priming on host failed:", host, e)
+            loaded_count = len(prepared)
             if loaded_count > 0:
-                print(f"Successfully loaded {loaded_count}/{len(cookies)} cookies.")
+                print(f"Successfully loaded {loaded_count}/{len(cookies_raw)} cookies.")
                 cookies_loaded_successfully = True
             print("Navigating to target URL with session...")
             sb.get(url)
@@ -463,15 +478,25 @@ def scrape_sahibinden(sb, url, known_posts):
             print(f"Saved screenshot before login click to: {screenshot_path}")
             print("Clicking login button using CDP...")
             clicked_login = False
-            try:
-                sb.cdp.click("#userLoginSubmitButton")
-                clicked_login = True
-            except Exception:
+            # Try visible submit elements first
+            for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
                 try:
-                    sb.click("#userLoginSubmitButton")
-                    clicked_login = True
+                    if sb.is_element_visible(sel):
+                        sb.cdp.click(sel)
+                        clicked_login = True
+                        break
                 except Exception:
-                    pass
+                    continue
+            if not clicked_login:
+                # Try regular click
+                for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
+                    try:
+                        if sb.is_element_present(sel):
+                            sb.click(sel)
+                            clicked_login = True
+                            break
+                    except Exception:
+                        continue
             if not clicked_login:
                 try:
                     sb.cdp.press_keys("#password", "\n")
@@ -483,7 +508,11 @@ def scrape_sahibinden(sb, url, known_posts):
                         pass
             print("Waiting for page to react after login click...")
             sb.sleep(5)
-            solve_captcha_with_buster(sb)
+            # Try solving captcha, but don't fail the whole flow if Buster UI isn't present
+            try:
+                solve_captcha_with_buster(sb)
+            except Exception as _e:
+                print("Captcha solver raised:", _e)
             sb.sleep(3)
             if _is_on_login():
                 print("Login failed, still on login page after CAPTCHA attempt.")
