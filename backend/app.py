@@ -55,6 +55,8 @@ SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", os.path.join(DATA_DIR, "s
 
 # CAPTCHA handling
 CAPTCHA_MAX_RELOAD_CLICKS = int(os.getenv("CAPTCHA_MAX_RELOAD_CLICKS", "20"))
+LOGIN_RECLICK_RETRIES = int(os.getenv("LOGIN_RECLICK_RETRIES", "2"))
+LOGIN_RECLICK_WAIT_SEC = int(os.getenv("LOGIN_RECLICK_WAIT_SEC", "3"))
 
 
 def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"):
@@ -1219,14 +1221,36 @@ def scrape_sahibinden(sb, url, known_posts):
             except Exception as _e:
                 print("Captcha solver raised:", _e)
             sb.sleep(3)
-
-            for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
-                try:
-                    if sb.is_element_visible(sel):
-                        sb.cdp.click(sel)
+            # If we are still on the login page with no visible challenge, re-click submit a few times.
+            if _is_on_login():
+                for _ in range(max(1, LOGIN_RECLICK_RETRIES)):
+                    reclicked = False
+                    for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
+                        try:
+                            if sb.is_element_present(sel):
+                                try:
+                                    sb.cdp.click(sel)
+                                except Exception:
+                                    try:
+                                        sb.js_click(sel)
+                                    except Exception:
+                                        sb.click(sel)
+                                reclicked = True
+                                break
+                        except Exception:
+                            continue
+                    if not reclicked:
+                        try:
+                            sb.cdp.press_keys("#password", "\n")
+                        except Exception:
+                            try:
+                                sb.press_keys("#password", "\n")
+                            except Exception:
+                                pass
+                    sb.sleep(max(1, LOGIN_RECLICK_WAIT_SEC))
+                    # Exit early if we left login page
+                    if not _is_on_login():
                         break
-                except Exception:
-                    continue
 
             if _is_on_login():
                 print("Login failed, still on login page after CAPTCHA attempt.")
@@ -1256,6 +1280,8 @@ def scrape_sahibinden(sb, url, known_posts):
                     sb.wait_for_ready_state_complete()
                 except Exception:
                     pass
+                # Small wait to let any session propagation occur before scraping
+                sb.sleep(2)
                 try:
                     ts_after_login = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                     after_login_shot = os.path.join(SCREENSHOTS_DIR, f"after_login_nav_{ts_after_login}.png")
