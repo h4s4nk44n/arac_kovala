@@ -562,6 +562,7 @@ def scrape_sahibinden(sb, url, known_posts):
                                                     sb.js_click('#reset-button')
                                                 except Exception:
                                                     sb.click('#reset-button')
+                                            print("Clicked reCAPTCHA reset button inside challenge frame.")
                                             clicked_local = True
                                             break
                                         sb.switch_to_default_content()
@@ -617,8 +618,21 @@ def scrape_sahibinden(sb, url, known_posts):
                             sb.switch_to_default_content()
                         except Exception:
                             pass
-                # Final check; if still not visible, raise to outer handler
-                sb.wait_for_element_visible(audio_button_selector, timeout=10)
+                # Final check; avoid throwing if still not visible
+                try:
+                    sb.wait_for_element_visible(audio_button_selector, timeout=5)
+                except Exception:
+                    try:
+                        sb.switch_to_default_content()
+                    except Exception:
+                        pass
+                    try:
+                        if not sb.is_element_present(audio_button_selector):
+                            print("Audio button still not visible after reload loop; giving control back to caller.")
+                            return False
+                    except Exception:
+                        print("Audio button check failed; giving control back to caller.")
+                        return False
             try:
                 sb.hover(audio_button_selector)
             except Exception:
@@ -1014,6 +1028,7 @@ def scrape_sahibinden(sb, url, known_posts):
                                                         sb.js_click('#reset-button')
                                                     except Exception:
                                                         sb.click('#reset-button')
+                                                print("Clicked reCAPTCHA reset button inside challenge frame (stalled flow).")
                                                 clicked_local = True
                                                 break
                                             sb.switch_to_default_content()
@@ -1367,10 +1382,42 @@ def scrape_sahibinden(sb, url, known_posts):
             sb.sleep(5)
             # Try solving captcha, but don't fail the whole flow if Buster UI isn't present
             try:
-                solve_captcha_with_buster(sb)
+                solved = solve_captcha_with_buster(sb)
             except Exception as _e:
                 print("Captcha solver raised:", _e)
             sb.sleep(3)
+            # If solver exited early without solving (returned False), press submit again directly.
+            try:
+                if _is_on_login():
+                    for _ in range(max(1, LOGIN_RECLICK_RETRIES)):
+                        pressed = False
+                        for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
+                            try:
+                                if sb.is_element_present(sel):
+                                    try:
+                                        sb.cdp.click(sel)
+                                    except Exception:
+                                        try:
+                                            sb.js_click(sel)
+                                        except Exception:
+                                            sb.click(sel)
+                                    pressed = True
+                                    break
+                            except Exception:
+                                continue
+                        if not pressed:
+                            try:
+                                sb.cdp.press_keys("#password", "\n")
+                            except Exception:
+                                try:
+                                    sb.press_keys("#password", "\n")
+                                except Exception:
+                                    pass
+                        sb.sleep(max(1, LOGIN_RECLICK_WAIT_SEC))
+                        if not _is_on_login():
+                            break
+            except Exception:
+                pass
             # If we are still on the login page with no visible challenge, re-click submit a few times.
             if _is_on_login():
                 for _ in range(max(1, LOGIN_RECLICK_RETRIES)):
