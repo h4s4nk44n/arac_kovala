@@ -364,7 +364,16 @@ def scrape_sahibinden(sb, url, known_posts):
                     clicked_local = False
                     try:
                         # Search current frame first
-                        for sel in ('#recaptcha-reload-button', '.rc-button-reload', 'button#recaptcha-reload-button'):
+                        for sel in (
+                            '#recaptcha-reload-button',
+                            'button#recaptcha-reload-button',
+                            '.rc-button-reload',
+                            '.rc-doscaptcha-reload',
+                            '.rc-doscaptcha [role="button"]',
+                            '.rc-button[role="button"]',
+                            '.rc-button',
+                            'div[role="button"]'
+                        ):
                             try:
                                 if sb.is_element_present(sel):
                                     try:
@@ -391,7 +400,16 @@ def scrape_sahibinden(sb, url, known_posts):
                             for fr3 in frames3:
                                 try:
                                     sb.switch_to_frame(fr3)
-                                    for sel in ('#recaptcha-reload-button', '.rc-button-reload', 'button#recaptcha-reload-button'):
+                                    for sel in (
+                                        '#recaptcha-reload-button',
+                                        'button#recaptcha-reload-button',
+                                        '.rc-button-reload',
+                                        '.rc-doscaptcha-reload',
+                                        '.rc-doscaptcha [role="button"]',
+                                        '.rc-button[role="button"]',
+                                        '.rc-button',
+                                        'div[role="button"]'
+                                    ):
                                         try:
                                             if sb.is_element_present(sel):
                                                 try:
@@ -413,6 +431,45 @@ def scrape_sahibinden(sb, url, known_posts):
                                         sb.switch_to_default_content()
                                     except Exception:
                                         pass
+                        # If still not clicked, try reopening the anchor to re-trigger the challenge
+                        if not clicked_local:
+                            try:
+                                sb.switch_to_default_content()
+                            except Exception:
+                                pass
+                            try:
+                                anchor_iframe_selector2 = 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]'
+                                if sb.is_element_present(anchor_iframe_selector2):
+                                    aif = sb.find_element('css selector', anchor_iframe_selector2)
+                                    sb.switch_to_frame(aif)
+                                    if sb.is_element_present('#recaptcha-anchor'):
+                                        try:
+                                            sb.cdp.click('#recaptcha-anchor')
+                                        except Exception:
+                                            try:
+                                                sb.js_click('#recaptcha-anchor')
+                                            except Exception:
+                                                sb.click('#recaptcha-anchor')
+                                        clicked_local = True
+                            except Exception:
+                                pass
+                        # Last resort: click center of DOS captcha overlay if present
+                        if not clicked_local:
+                            try:
+                                for overlay_sel in ('.rc-doscaptcha', '.rc-doscaptcha-body', '.rc-anchor-error-msg-container'):
+                                    try:
+                                        if sb.is_element_present(overlay_sel):
+                                            el = sb.find_element('css selector', overlay_sel)
+                                            rect = sb.driver.execute_script('var r = arguments[0].getBoundingClientRect(); return {x:r.left + r.width/2, y:r.top + r.height/2};', el)
+                                            cx, cy = int(rect.get('x', 0)), int(rect.get('y', 0))
+                                            sb.cdp.send('Input.dispatchMouseEvent', {"type":"mousePressed","x":cx,"y":cy,"button":"left","clickCount":1})
+                                            sb.cdp.send('Input.dispatchMouseEvent', {"type":"mouseReleased","x":cx,"y":cy,"button":"left","clickCount":1})
+                                            clicked_local = True
+                                            break
+                                    except Exception:
+                                        continue
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                     try:
@@ -727,7 +784,16 @@ def scrape_sahibinden(sb, url, known_posts):
                     def _click_reload_once() -> bool:
                         clicked_local = False
                         try:
-                            for sel in ('#recaptcha-reload-button', '.rc-button-reload', 'button#recaptcha-reload-button'):
+                            for sel in (
+                                '#recaptcha-reload-button',
+                                'button#recaptcha-reload-button',
+                                '.rc-button-reload',
+                                '.rc-doscaptcha-reload',
+                                '.rc-doscaptcha [role="button"]',
+                                '.rc-button[role="button"]',
+                                '.rc-button',
+                                'div[role="button"]'
+                            ):
                                 try:
                                     if sb.is_element_present(sel):
                                         try:
@@ -753,7 +819,16 @@ def scrape_sahibinden(sb, url, known_posts):
                                 for fr3 in frames3:
                                     try:
                                         sb.switch_to_frame(fr3)
-                                        for sel in ('#recaptcha-reload-button', '.rc-button-reload', 'button#recaptcha-reload-button'):
+                                        for sel in (
+                                            '#recaptcha-reload-button',
+                                            'button#recaptcha-reload-button',
+                                            '.rc-button-reload',
+                                            '.rc-doscaptcha-reload',
+                                            '.rc-doscaptcha [role="button"]',
+                                            '.rc-button[role="button"]',
+                                            '.rc-button',
+                                            'div[role="button"]'
+                                        ):
                                             try:
                                                 if sb.is_element_present(sel):
                                                     try:
@@ -775,6 +850,45 @@ def scrape_sahibinden(sb, url, known_posts):
                                             sb.switch_to_default_content()
                                         except Exception:
                                             pass
+                            if not clicked_local:
+                                # Try reopen the anchor checkbox to re-trigger
+                                try:
+                                    sb.switch_to_default_content()
+                                except Exception:
+                                    pass
+                                try:
+                                    anchor_iframe_selector2 = 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]'
+                                    if sb.is_element_present(anchor_iframe_selector2):
+                                        aif = sb.find_element('css selector', anchor_iframe_selector2)
+                                        sb.switch_to_frame(aif)
+                                        if sb.is_element_present('#recaptcha-anchor'):
+                                            try:
+                                                sb.cdp.click('#recaptcha-anchor')
+                                            except Exception:
+                                                try:
+                                                    sb.js_click('#recaptcha-anchor')
+                                                except Exception:
+                                                    sb.click('#recaptcha-anchor')
+                                            clicked_local = True
+                                except Exception:
+                                    pass
+                            if not clicked_local:
+                                # Click center of DOS overlay if present
+                                try:
+                                    for overlay_sel in ('.rc-doscaptcha', '.rc-doscaptcha-body', '.rc-anchor-error-msg-container'):
+                                        try:
+                                            if sb.is_element_present(overlay_sel):
+                                                el = sb.find_element('css selector', overlay_sel)
+                                                rect = sb.driver.execute_script('var r = arguments[0].getBoundingClientRect(); return {x:r.left + r.width/2, y:r.top + r.height/2};', el)
+                                                cx, cy = int(rect.get('x', 0)), int(rect.get('y', 0))
+                                                sb.cdp.send('Input.dispatchMouseEvent', {"type":"mousePressed","x":cx,"y":cy,"button":"left","clickCount":1})
+                                                sb.cdp.send('Input.dispatchMouseEvent', {"type":"mouseReleased","x":cx,"y":cy,"button":"left","clickCount":1})
+                                                clicked_local = True
+                                                break
+                                        except Exception:
+                                            continue
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
                         try:
