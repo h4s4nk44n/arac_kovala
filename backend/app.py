@@ -1219,6 +1219,15 @@ def scrape_sahibinden(sb, url, known_posts):
             except Exception as _e:
                 print("Captcha solver raised:", _e)
             sb.sleep(3)
+
+            for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
+                try:
+                    if sb.is_element_visible(sel):
+                        sb.cdp.click(sel)
+                        break
+                except Exception:
+                    continue
+
             if _is_on_login():
                 print("Login failed, still on login page after CAPTCHA attempt.")
                 try:
