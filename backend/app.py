@@ -539,6 +539,39 @@ def scrape_sahibinden(sb, url, known_posts):
                                         clicked_local = True
                             except Exception:
                                 pass
+                        # If DoS overlay is present, try clicking the dedicated reset button (#reset-button) in any challenge frame
+                        if not clicked_local:
+                            try:
+                                try:
+                                    sb.switch_to_default_content()
+                                except Exception:
+                                    pass
+                                frames_reset = []
+                                try:
+                                    frames_reset = sb.find_elements('css selector', 'iframe')
+                                except Exception:
+                                    frames_reset = []
+                                for frx in frames_reset:
+                                    try:
+                                        sb.switch_to_frame(frx)
+                                        if sb.is_element_present('#reset-button'):
+                                            try:
+                                                sb.cdp.click('#reset-button')
+                                            except Exception:
+                                                try:
+                                                    sb.js_click('#reset-button')
+                                                except Exception:
+                                                    sb.click('#reset-button')
+                                            clicked_local = True
+                                            break
+                                        sb.switch_to_default_content()
+                                    except Exception:
+                                        try:
+                                            sb.switch_to_default_content()
+                                        except Exception:
+                                            pass
+                            except Exception:
+                                pass
                         # Last resort: click center of DOS captcha overlay if present
                         if not clicked_local:
                             try:
@@ -956,6 +989,39 @@ def scrape_sahibinden(sb, url, known_posts):
                                                 except Exception:
                                                     sb.click('#recaptcha-anchor')
                                             clicked_local = True
+                                except Exception:
+                                    pass
+                            if not clicked_local:
+                                # Try the reset button when DoS overlay is active
+                                try:
+                                    try:
+                                        sb.switch_to_default_content()
+                                    except Exception:
+                                        pass
+                                    frames_reset = []
+                                    try:
+                                        frames_reset = sb.find_elements('css selector', 'iframe')
+                                    except Exception:
+                                        frames_reset = []
+                                    for frx in frames_reset:
+                                        try:
+                                            sb.switch_to_frame(frx)
+                                            if sb.is_element_present('#reset-button'):
+                                                try:
+                                                    sb.cdp.click('#reset-button')
+                                                except Exception:
+                                                    try:
+                                                        sb.js_click('#reset-button')
+                                                    except Exception:
+                                                        sb.click('#reset-button')
+                                                clicked_local = True
+                                                break
+                                            sb.switch_to_default_content()
+                                        except Exception:
+                                            try:
+                                                sb.switch_to_default_content()
+                                            except Exception:
+                                                pass
                                 except Exception:
                                     pass
                             if not clicked_local:
