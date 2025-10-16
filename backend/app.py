@@ -348,9 +348,51 @@ def scrape_sahibinden(sb, url, known_posts):
                     print("Scanning iframes for challenge failed:", _e2)
                     return False
 
-            # Screenshot inside the challenge for debugging
+            # Save HTML and Screenshot inside the challenge for debugging
             try:
                 ts_cap = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                # Save outer/root HTML
+                try:
+                    try:
+                        sb.switch_to_default_content()
+                    except Exception:
+                        pass
+                    try:
+                        root_html = sb.get_page_source()
+                    except Exception:
+                        try:
+                            root_html = sb.driver.page_source
+                        except Exception:
+                            root_html = ""
+                    if root_html:
+                        root_path = os.path.join(HTML_SNAPSHOTS_DIR, f"captcha_first_seen_root_{ts_cap}.html")
+                        with open(root_path, 'w', encoding='utf-8') as f:
+                            f.write(root_html)
+                        print(f"Saved captcha first-seen ROOT html: {root_path}")
+                except Exception:
+                    pass
+
+                # Save iframe HTML (challenge context)
+                try:
+                    try:
+                        sb.switch_to_frame(challenge_iframe_element)
+                    except Exception:
+                        pass
+                    try:
+                        iframe_html = sb.get_page_source()
+                    except Exception:
+                        try:
+                            iframe_html = sb.driver.page_source
+                        except Exception:
+                            iframe_html = ""
+                    if iframe_html:
+                        iframe_path = os.path.join(HTML_SNAPSHOTS_DIR, f"captcha_first_seen_iframe_{ts_cap}.html")
+                        with open(iframe_path, 'w', encoding='utf-8') as f:
+                            f.write(iframe_html)
+                        print(f"Saved captcha first-seen IFRAME html: {iframe_path}")
+                except Exception:
+                    pass
+
                 sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_iframe_{ts_cap}.png"))
             except Exception:
                 pass
@@ -360,8 +402,50 @@ def scrape_sahibinden(sb, url, known_posts):
             try:
                 sb.wait_for_element_visible(audio_button_selector, timeout=15)
             except Exception:
-                # We might be in hard-block UI. Try clicking reload repeatedly across frames.
+                # We might be in hard-block UI. Capture HTML and try clicking reload repeatedly across frames.
                 print("Audio button not visible; attempting reload loop to bypass block...")
+                # Save HTML snapshot of error/overlay state
+                try:
+                    ts_err = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    try:
+                        sb.switch_to_default_content()
+                    except Exception:
+                        pass
+                    try:
+                        root_html2 = sb.get_page_source()
+                    except Exception:
+                        try:
+                            root_html2 = sb.driver.page_source
+                        except Exception:
+                            root_html2 = ""
+                    if root_html2:
+                        root_err_path = os.path.join(HTML_SNAPSHOTS_DIR, f"captcha_error_root_{ts_err}.html")
+                        with open(root_err_path, 'w', encoding='utf-8') as f:
+                            f.write(root_html2)
+                        print(f"Saved captcha ERROR root html: {root_err_path}")
+
+                    # Try to save challenge iframe HTML if present
+                    try:
+                        challenge_iframe_selector2 = 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'
+                        if sb.is_element_present(challenge_iframe_selector2):
+                            fr = sb.find_element('css selector', challenge_iframe_selector2)
+                            sb.switch_to_frame(fr)
+                            try:
+                                iframe_html2 = sb.get_page_source()
+                            except Exception:
+                                try:
+                                    iframe_html2 = sb.driver.page_source
+                                except Exception:
+                                    iframe_html2 = ""
+                            if iframe_html2:
+                                iframe_err_path = os.path.join(HTML_SNAPSHOTS_DIR, f"captcha_error_iframe_{ts_err}.html")
+                                with open(iframe_err_path, 'w', encoding='utf-8') as f:
+                                    f.write(iframe_html2)
+                                print(f"Saved captcha ERROR iframe html: {iframe_err_path}")
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
                 def _click_reload_once() -> bool:
                     clicked_local = False
                     try:
