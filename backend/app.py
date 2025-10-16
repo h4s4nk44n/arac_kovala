@@ -53,6 +53,9 @@ LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))  # 5 sec cooldown
 # Persist session cookies on the data volume by default
 SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", os.path.join(DATA_DIR, "session_cookies.json"))
 
+# CAPTCHA handling
+CAPTCHA_MAX_RELOAD_CLICKS = int(os.getenv("CAPTCHA_MAX_RELOAD_CLICKS", "20"))
+
 
 def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"):
     """Parse cookies.txt; omit 'domain' for host-only cookies to avoid domain mismatch."""
@@ -350,9 +353,96 @@ def scrape_sahibinden(sb, url, known_posts):
             except Exception:
                 pass
 
-            # Click the audio button to get an audio challenge
+            # Click the audio button to get an audio challenge. If blocked, try reload loop.
             audio_button_selector = "#recaptcha-audio-button"
-            sb.wait_for_element_visible(audio_button_selector, timeout=15)
+            try:
+                sb.wait_for_element_visible(audio_button_selector, timeout=15)
+            except Exception:
+                # We might be in hard-block UI. Try clicking reload repeatedly across frames.
+                print("Audio button not visible; attempting reload loop to bypass block...")
+                def _click_reload_once() -> bool:
+                    clicked_local = False
+                    try:
+                        # Search current frame first
+                        for sel in ('#recaptcha-reload-button', '.rc-button-reload', 'button#recaptcha-reload-button'):
+                            try:
+                                if sb.is_element_present(sel):
+                                    try:
+                                        sb.cdp.click(sel)
+                                    except Exception:
+                                        try:
+                                            sb.js_click(sel)
+                                        except Exception:
+                                            sb.click(sel)
+                                    clicked_local = True
+                                    break
+                            except Exception:
+                                continue
+                        if not clicked_local:
+                            # Search all iframes
+                            try:
+                                sb.switch_to_default_content()
+                            except Exception:
+                                pass
+                            try:
+                                frames3 = sb.find_elements('css selector', 'iframe')
+                            except Exception:
+                                frames3 = []
+                            for fr3 in frames3:
+                                try:
+                                    sb.switch_to_frame(fr3)
+                                    for sel in ('#recaptcha-reload-button', '.rc-button-reload', 'button#recaptcha-reload-button'):
+                                        try:
+                                            if sb.is_element_present(sel):
+                                                try:
+                                                    sb.cdp.click(sel)
+                                                except Exception:
+                                                    try:
+                                                        sb.js_click(sel)
+                                                    except Exception:
+                                                        sb.click(sel)
+                                                clicked_local = True
+                                                break
+                                        except Exception:
+                                            continue
+                                    if clicked_local:
+                                        break
+                                    sb.switch_to_default_content()
+                                except Exception:
+                                    try:
+                                        sb.switch_to_default_content()
+                                    except Exception:
+                                        pass
+                    except Exception:
+                        pass
+                    try:
+                        sb.switch_to_default_content()
+                    except Exception:
+                        pass
+                    return clicked_local
+
+                reload_clicks = 0
+                while reload_clicks < CAPTCHA_MAX_RELOAD_CLICKS:
+                    did = _click_reload_once()
+                    reload_clicks += 1 if did else 0
+                    sb.sleep(1.0)
+                    # After each reload, re-check for audio button
+                    try:
+                        # Find a challenge frame again
+                        challenge_iframe_selector2 = 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'
+                        if sb.is_element_present(challenge_iframe_selector2):
+                            fr = sb.find_element('css selector', challenge_iframe_selector2)
+                            sb.switch_to_frame(fr)
+                        if sb.is_element_present(audio_button_selector):
+                            print("Audio button became visible after reload.")
+                            break
+                    except Exception:
+                        try:
+                            sb.switch_to_default_content()
+                        except Exception:
+                            pass
+                # Final check; if still not visible, raise to outer handler
+                sb.wait_for_element_visible(audio_button_selector, timeout=10)
             try:
                 sb.hover(audio_button_selector)
             except Exception:
@@ -633,6 +723,78 @@ def scrape_sahibinden(sb, url, known_posts):
                 print(f"Attempting CAPTCHA reload (attempt {attempt+1})...")
                 # Try to click the reload button inside the challenge frame, then recurse
                 try:
+                    # Use the same reload loop helper when stalled
+                    def _click_reload_once() -> bool:
+                        clicked_local = False
+                        try:
+                            for sel in ('#recaptcha-reload-button', '.rc-button-reload', 'button#recaptcha-reload-button'):
+                                try:
+                                    if sb.is_element_present(sel):
+                                        try:
+                                            sb.cdp.click(sel)
+                                        except Exception:
+                                            try:
+                                                sb.js_click(sel)
+                                            except Exception:
+                                                sb.click(sel)
+                                        clicked_local = True
+                                        break
+                                except Exception:
+                                    continue
+                            if not clicked_local:
+                                try:
+                                    sb.switch_to_default_content()
+                                except Exception:
+                                    pass
+                                try:
+                                    frames3 = sb.find_elements('css selector', 'iframe')
+                                except Exception:
+                                    frames3 = []
+                                for fr3 in frames3:
+                                    try:
+                                        sb.switch_to_frame(fr3)
+                                        for sel in ('#recaptcha-reload-button', '.rc-button-reload', 'button#recaptcha-reload-button'):
+                                            try:
+                                                if sb.is_element_present(sel):
+                                                    try:
+                                                        sb.cdp.click(sel)
+                                                    except Exception:
+                                                        try:
+                                                            sb.js_click(sel)
+                                                        except Exception:
+                                                            sb.click(sel)
+                                                    clicked_local = True
+                                                    break
+                                            except Exception:
+                                                continue
+                                        if clicked_local:
+                                            break
+                                        sb.switch_to_default_content()
+                                    except Exception:
+                                        try:
+                                            sb.switch_to_default_content()
+                                        except Exception:
+                                            pass
+                        except Exception:
+                            pass
+                        try:
+                            sb.switch_to_default_content()
+                        except Exception:
+                            pass
+                        return clicked_local
+
+                    clicks = 0
+                    while clicks < CAPTCHA_MAX_RELOAD_CLICKS:
+                        did = _click_reload_once()
+                        clicks += 1 if did else 0
+                        sb.sleep(1.0)
+                        # If the challenge disappears, break and re-run solver
+                        try:
+                            gone = EC.invisibility_of_element_located((By.CSS_SELECTOR, 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'))(sb.driver)
+                        except Exception:
+                            gone = False
+                        if gone:
+                            break
                     # Re-find a challenge frame to enter
                     cf = None
                     try:
