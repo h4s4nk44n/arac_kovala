@@ -192,27 +192,46 @@ def _get_chrome_args() -> list:
     base = [
         "--no-sandbox",
         "--disable-dev-shm-usage",
-        "--no-zygote",
         "--disable-gpu",
         "--disable-software-rasterizer",
-        "--disable-features=Translate,IsolateOrigins,site-per-process",
+        "--disable-features=Translate",
         "--no-first-run",
         "--no-default-browser-check",
         "--remote-allow-origins=*",
         "--disable-backgrounding-occluded-windows",
+        "--disable-extensions",
+        "--disable-component-extensions-with-background-pages",
     ]
     # Add headless flag if requested via env
     if _env_true("HEADLESS", "0"):
         base.append("--headless=new")
-        base.append("--disable-dev-tools")
     extra = (os.getenv("EXTRA_CHROME_ARGS") or "").strip()
     if extra:
         for token in [t.strip() for t in extra.split(",") if t.strip()]:
-            base.append(token)
+            if token and token not in base:
+                base.append(token)
+    print(f"Chrome args: {base}")
     return base
 
 def _is_headless() -> bool:
     return _env_true("HEADLESS", "0")
+
+def _verify_chrome_binary():
+    """Verify Chrome binary exists and is executable at startup."""
+    chrome_bin = os.getenv("CHROME_BIN") or os.getenv("SB_CHROME_BINARY") or "/usr/bin/google-chrome"
+    if os.path.exists(chrome_bin) and os.access(chrome_bin, os.X_OK):
+        print(f"✓ Chrome binary found and executable: {chrome_bin}")
+        try:
+            import subprocess
+            result = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, timeout=5)
+            print(f"✓ Chrome version: {result.stdout.strip()}")
+            return True
+        except Exception as e:
+            print(f"⚠ Chrome version check failed: {e}")
+            return False
+    else:
+        print(f"✗ Chrome binary not found or not executable: {chrome_bin}")
+        return False
 
     # Gentle scrolling down and up a bit
     try:
@@ -1506,6 +1525,7 @@ def bootstrap():
         if _BOOTSTRAPPED:
             return
         print("--- Bootstrapping Application ---")
+        _verify_chrome_binary()
         _load_data_from_disk()
         _start_scraper_thread()
         _BOOTSTRAPPED = True

@@ -37,7 +37,12 @@ RUN pip install --upgrade pip setuptools wheel && \
     pip install -r requirements.txt
 COPY . /app
 
+# Verify Chrome installation and create test script
+RUN google-chrome --version && \
+    echo '#!/bin/bash\nexec google-chrome "$@"' > /usr/local/bin/chrome-wrapper && \
+    chmod +x /usr/local/bin/chrome-wrapper
+
 # Recommend environment flags for Chrome inside containers
-ENV EXTRA_CHROME_ARGS="--single-process,--disable-dev-shm-usage,--no-sandbox,--no-zygote"
+ENV EXTRA_CHROME_ARGS="--disable-dev-shm-usage,--no-sandbox"
 
 CMD ["bash", "-lc", "exec gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]
