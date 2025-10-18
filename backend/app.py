@@ -146,6 +146,70 @@ def _prime_anon_cookies(sb):
     print("Bypassing legacy cookie priming. Session will be handled by the scraper.")
     pass
 
+def _bypass_turnstile_if_present(sb, max_wait_seconds: int = 40) -> bool:
+    """
+    Detect Cloudflare Turnstile "Tarayıcınızı kontrol ediyoruz..." page and attempt to proceed.
+    Returns True if we detected the page and it appears cleared; False otherwise.
+    """
+    def _is_challenge_page() -> bool:
+        try:
+            if sb.is_element_present("#btn-continue"):
+                return True
+        except Exception:
+            pass
+        try:
+            if sb.is_element_present("#turnStileWidget"):
+                return True
+        except Exception:
+            pass
+        try:
+            html = (sb.get_page_source() or "").lower()
+            return ("tarayıcınızı kontrol ediyoruz" in html) or ("turnstile" in html)
+        except Exception:
+            return False
+
+    if not _is_challenge_page():
+        return False
+
+    start = time.time()
+    while time.time() - start < max_wait_seconds:
+        try:
+            # Click the continue button if present
+            if sb.is_element_present("#btn-continue"):
+                try:
+                    sb.cdp.click("#btn-continue")
+                except Exception:
+                    try:
+                        sb.js_click("#btn-continue")
+                    except Exception:
+                        try:
+                            sb.click("#btn-continue")
+                        except Exception:
+                            pass
+
+            # Give Turnstile a moment to verify in the background
+            sb.sleep(1.5)
+
+            # Heuristics: if the message/button disappears or the text no longer present, we passed
+            still_button = False
+            try:
+                still_button = sb.is_element_present("#btn-continue")
+            except Exception:
+                still_button = False
+
+            try:
+                html_now = (sb.get_page_source() or "").lower()
+            except Exception:
+                html_now = ""
+
+            if (not still_button) and ("tarayıcınızı kontrol ediyoruz" not in html_now):
+                return True
+        except Exception:
+            # ignore and retry within the wait window
+            pass
+
+    return False
+
 def build_brightdata_proxy_string(country_code="tr", session_id=None):
     """
     Returns PROXY_STRING in the format: username:password@host:port
@@ -249,6 +313,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 try:
                     attempt_idx += 1
                     sb.uc_open_with_reconnect(login_url, 4)
+                    try:
+                        _bypass_turnstile_if_present(sb, 40)
+                    except Exception:
+                        pass
                     _accept_cookie_banner_if_any_local(sb)
                     sb.wait_for_ready_state_complete()
                     if sb.is_element_present("#username") and sb.is_element_present("#password"):
@@ -303,6 +371,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
 
             # Type credentials and submit
             try:
+                _bypass_turnstile_if_present(sb, 20)
+            except Exception:
+                pass
+            try:
                 sb.cdp.click("#username")
             except Exception:
                 pass
@@ -347,6 +419,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                         pass
 
             sb.sleep(3)
+            try:
+                _bypass_turnstile_if_present(sb, 20)
+            except Exception:
+                pass
             # Extra diagnostics if still on login after submit
             try:
                 if _still_on_login():
@@ -394,6 +470,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     sb.get(target_url)
                 except Exception:
                     pass
+            try:
+                _bypass_turnstile_if_present(sb, 20)
+            except Exception:
+                pass
             _accept_cookie_banner_if_any_local(sb)
             try:
                 with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
@@ -596,6 +676,10 @@ def scrape_sahibinden(sb, url, known_posts):
     # Navigate to target using the loaded/seeded session
     try:
         sb.get(url)
+        try:
+            _bypass_turnstile_if_present(sb, 30)
+        except Exception:
+            pass
         _accept_cookie_banner_if_any()
         time.sleep(1)
     except Exception as e:
