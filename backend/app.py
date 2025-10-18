@@ -184,6 +184,29 @@ def _humanize_session(sb, moves: int = 10):
     except Exception:
         pass
 
+def _get_chrome_args() -> list:
+    """
+    Chrome flags for container stability. Allows extra args via EXTRA_CHROME_ARGS
+    (comma-separated). Forces safer defaults for Railway (no-sandbox, shm fix).
+    """
+    base = [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--disable-features=Translate,IsolateOrigins,site-per-process",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--remote-debugging-port=0",
+        "--remote-allow-origins=*",
+        "--disable-backgrounding-occluded-windows",
+    ]
+    extra = (os.getenv("EXTRA_CHROME_ARGS") or "").strip()
+    if extra:
+        for token in [t.strip() for t in extra.split(",") if t.strip()]:
+            base.append(token)
+    return base
+
     # Gentle scrolling down and up a bit
     try:
         total = 0
@@ -565,6 +588,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             window_size="1600,900",
             user_data_dir=_get_chrome_profile_dir(),
             proxy=proxy_string,
+            chromium_arg=_get_chrome_args(),
         ) as sb:
             try:
                 sb.driver.execute_cdp_cmd(
@@ -1217,6 +1241,7 @@ def _scrape_loop(poll_seconds: int = 60):
                         window_size="1600,900",
                         user_data_dir=_get_chrome_profile_dir(),
                         proxy=None,
+                        chromium_arg=_get_chrome_args(),
                     ) as sb:
                         try:
                             sb.driver.execute_cdp_cmd(
@@ -1261,6 +1286,7 @@ def _scrape_loop(poll_seconds: int = 60):
                             window_size="1600,900",
                             user_data_dir=_get_chrome_profile_dir(),
                             proxy=None,
+                            chromium_arg=_get_chrome_args(),
                         ) as sb:
                             try:
                                 sb.driver.execute_cdp_cmd(

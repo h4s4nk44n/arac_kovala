@@ -5,9 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8080
 
-# Install Chromium, Xvfb, and additional dependencies for PyAutoGUI
+# Install Chromium, chromedriver, Xvfb, and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
+    chromium chromium-driver \
     fonts-liberation \
     libasound2 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
     libcairo2 libcups2 libdbus-1-3 libdrm2 \
@@ -16,12 +16,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
     libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 \
     libgbm1 libxshmfence1 xdg-utils wget ca-certificates xvfb xauth \
+    libu2f-udev \
     scrot python3-tk python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
 ENV CHROME_BIN=/usr/bin/chromium \
     SB_CHROME_BINARY=/usr/bin/chromium \
-    HEADLESS=0
+    HEADLESS=0 \
+    DBUS_SESSION_BUS_ADDRESS=/dev/null
 
 WORKDIR /app
 
@@ -29,5 +31,8 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip setuptools wheel && \
     pip install -r requirements.txt
 COPY . /app
+
+# Recommend environment flags for Chrome inside containers
+ENV EXTRA_CHROME_ARGS="--single-process,--disable-dev-shm-usage,--no-sandbox,--remote-debugging-port=0"
 
 CMD ["bash", "-lc", "exec gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]
