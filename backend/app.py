@@ -146,6 +146,59 @@ def _prime_anon_cookies(sb):
     print("Bypassing legacy cookie priming. Session will be handled by the scraper.")
     pass
 
+def _get_chrome_profile_dir() -> str:
+    """
+    Returns a persistent Chrome profile directory to increase realism across runs.
+    Uses CHROME_PROFILE_DIR if provided; otherwise stores under DATA_DIR.
+    """
+    dir_from_env = os.getenv("CHROME_PROFILE_DIR")
+    profile_dir = dir_from_env.strip() if dir_from_env else os.path.join(DATA_DIR, "chrome_profile")
+    try:
+        os.makedirs(profile_dir, exist_ok=True)
+    except Exception:
+        pass
+    return profile_dir
+
+def _humanize_session(sb, moves: int = 10):
+    """
+    Emit simple human-like signals: mouse moves and incremental scrolling.
+    This avoids suspiciously static sessions.
+    """
+    try:
+        w = sb.execute_script("return window.innerWidth || 1200") or 1200
+        h = sb.execute_script("return window.innerHeight || 800") or 800
+    except Exception:
+        w, h = 1200, 800
+
+    # Random mouse path using JS events to avoid ActionChains brittleness with iframes
+    try:
+        x, y = random.randint(20, int(0.3 * w)), random.randint(60, int(0.5 * h))
+        for _ in range(max(3, moves)):
+            x = max(1, min(w - 5, x + random.randint(-80, 120)))
+            y = max(1, min(h - 5, y + random.randint(-50, 90)))
+            sb.execute_script(
+                "window.dispatchEvent(new MouseEvent('mousemove', {bubbles:true,clientX:arguments[0],clientY:arguments[1]}));",
+                x, y,
+            )
+            sb.sleep(0.05 + random.random() * 0.25)
+    except Exception:
+        pass
+
+    # Gentle scrolling down and up a bit
+    try:
+        total = 0
+        for _ in range(6):
+            dy = random.randint(80, 240)
+            sb.execute_script("window.scrollBy(0, arguments[0]);", dy)
+            total += dy
+            sb.sleep(0.25 + random.random() * 0.5)
+        for _ in range(2):
+            dy = random.randint(60, 180)
+            sb.execute_script("window.scrollBy(0, arguments[0]);", -dy)
+            sb.sleep(0.25 + random.random() * 0.5)
+    except Exception:
+        pass
+
 def _realistic_user_agent() -> str:
     """
     Return a modern desktop Chrome UA. Can be overridden via BROWSER_UA env.
@@ -510,6 +563,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             agent=_realistic_user_agent(),
             locale_code="tr-TR",
             window_size="1600,900",
+            user_data_dir=_get_chrome_profile_dir(),
             proxy=proxy_string,
         ) as sb:
             try:
@@ -521,6 +575,12 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 pass
             try:
                 _apply_stealth(sb)
+            except Exception:
+                pass
+            try:
+                # Small pause and some human-like signals at session start
+                sb.sleep(0.8 + random.random() * 0.8)
+                _humanize_session(sb, 8)
             except Exception:
                 pass
 
@@ -536,18 +596,22 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 try:
                     attempt_idx += 1
                     sb.uc_open_with_reconnect(login_url, 4)
-                    try:
-                        _bypass_turnstile_if_present(sb, 40)
-                    except Exception:
-                        pass
-                    try:
-                        _try_uc_gui_click_captcha(sb, 45)
-                    except Exception:
-                        pass
-                    try:
-                        _solve_cloudflare_checkbox(sb, 60)
-                    except Exception:
-                        pass
+            try:
+                _bypass_turnstile_if_present(sb, 40)
+            except Exception:
+                pass
+            try:
+                _try_uc_gui_click_captcha(sb, 45)
+            except Exception:
+                pass
+            try:
+                _solve_cloudflare_checkbox(sb, 60)
+            except Exception:
+                pass
+            try:
+                _humanize_session(sb, 6)
+            except Exception:
+                pass
                     _accept_cookie_banner_if_any_local(sb)
                     sb.wait_for_ready_state_complete()
                     if sb.is_element_present("#username") and sb.is_element_present("#password"):
@@ -611,6 +675,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 pass
             try:
                 _solve_cloudflare_checkbox(sb, 60)
+            except Exception:
+                pass
+            try:
+                _humanize_session(sb, 6)
             except Exception:
                 pass
             try:
@@ -727,6 +795,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 pass
             try:
                 _solve_cloudflare_checkbox(sb, 60)
+            except Exception:
+                pass
+            try:
+                _humanize_session(sb, 6)
             except Exception:
                 pass
             _accept_cookie_banner_if_any_local(sb)
@@ -943,6 +1015,10 @@ def scrape_sahibinden(sb, url, known_posts):
             _solve_cloudflare_checkbox(sb, 60)
         except Exception:
             pass
+        try:
+            _humanize_session(sb, 6)
+        except Exception:
+            pass
         _accept_cookie_banner_if_any()
         time.sleep(1)
     except Exception as e:
@@ -1139,6 +1215,7 @@ def _scrape_loop(poll_seconds: int = 60):
                         agent=_realistic_user_agent(),
                         locale_code="tr-TR",
                         window_size="1600,900",
+                        user_data_dir=_get_chrome_profile_dir(),
                         proxy=None,
                     ) as sb:
                         try:
@@ -1150,6 +1227,11 @@ def _scrape_loop(poll_seconds: int = 60):
                             pass
                         try:
                             _apply_stealth(sb)
+                        except Exception:
+                            pass
+                        try:
+                            sb.sleep(0.8 + random.random() * 0.8)
+                            _humanize_session(sb, 8)
                         except Exception:
                             pass
                         try:
@@ -1177,6 +1259,7 @@ def _scrape_loop(poll_seconds: int = 60):
                             agent=_realistic_user_agent(),
                             locale_code="tr-TR",
                             window_size="1600,900",
+                            user_data_dir=_get_chrome_profile_dir(),
                             proxy=None,
                         ) as sb:
                             try:
@@ -1188,6 +1271,11 @@ def _scrape_loop(poll_seconds: int = 60):
                                 pass
                             try:
                                 _apply_stealth(sb)
+                            except Exception:
+                                pass
+                            try:
+                                sb.sleep(0.8 + random.random() * 0.8)
+                                _humanize_session(sb, 8)
                             except Exception:
                                 pass
                             try:
