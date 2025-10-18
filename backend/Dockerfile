@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV CHROME_BIN=/usr/bin/google-chrome \
     SB_CHROME_BINARY=/usr/bin/google-chrome \
-    HEADLESS=1 \
+    HEADLESS=0 \
     DBUS_SESSION_BUS_ADDRESS=/dev/null
 
 WORKDIR /app

@@ -220,6 +220,22 @@ def _verify_chrome_binary():
     """Verify Chrome binary exists and is executable at startup."""
     import subprocess
     chrome_bin = os.getenv("CHROME_BIN") or os.getenv("SB_CHROME_BINARY") or "/usr/bin/google-chrome"
+    
+    # Check memory
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            mem_info = f.read()
+            for line in mem_info.split('\n'):
+                if 'MemAvailable:' in line:
+                    mem_kb = int(line.split()[1])
+                    mem_mb = mem_kb // 1024
+                    print(f"Available memory: {mem_mb} MB")
+                    if mem_mb < 300:
+                        print("⚠ WARNING: Low memory! Chrome may fail to start. Recommend >= 512MB")
+                    break
+    except Exception:
+        pass
+    
     if os.path.exists(chrome_bin) and os.access(chrome_bin, os.X_OK):
         print(f"✓ Chrome binary found and executable: {chrome_bin}")
         try:
@@ -633,6 +649,8 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
         debug_port = get_free_port()
         chrome_args = _get_chrome_args()
         chrome_args.append(f"--remote-debugging-port={debug_port}")
+        print(f"Starting Chrome with debug port: {debug_port}")
+        print(f"Final Chrome args: {chrome_args}")
         
         with SB(
             uc=True,
