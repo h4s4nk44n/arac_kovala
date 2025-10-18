@@ -204,6 +204,7 @@ def _get_chrome_args() -> list:
     # Add headless flag if requested via env
     if _env_true("HEADLESS", "0"):
         base.append("--headless=new")
+        base.append("--disable-dev-tools")
     extra = (os.getenv("EXTRA_CHROME_ARGS") or "").strip()
     if extra:
         for token in [t.strip() for t in extra.split(",") if t.strip()]:
@@ -595,7 +596,6 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             user_data_dir=_get_chrome_profile_dir(),
             proxy=proxy_string,
             chromium_arg=_get_chrome_args(),
-            reuse_session=True,
         ) as sb:
             try:
                 sb.driver.execute_cdp_cmd(
