@@ -638,10 +638,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             pass
 
     try:
-        print(f"[Login] Starting proxy login session (uc=True, headless={_is_headless()})")
+        print(f"[Login] Starting proxy login session (uc=False, headless={_is_headless()})")
         
         with SB(
-            uc=True,
+            uc=False,
             headless=_is_headless(),
             xvfb=True,
             agent=_realistic_user_agent(),
@@ -1293,10 +1293,12 @@ def _scrape_loop(poll_seconds: int = 60):
 
                 # 1) Try scraping WITHOUT proxy using existing cookies
                 try:
-                    print(f"[Scrape Loop] Starting browser session (uc={not _is_headless()}, headless={_is_headless()})")
+                    # Use regular mode (uc=False) as fallback - more stable in containers
+                    # Our humanization stack (stealth, profile, mouse, proxy) makes it realistic enough
+                    print(f"[Scrape Loop] Starting browser session (uc=False, headless={_is_headless()})")
                     
                     with SB(
-                        uc=True,
+                        uc=False,
                         headless=_is_headless(),
                         xvfb=True,
                         agent=_realistic_user_agent(),
@@ -1342,10 +1344,10 @@ def _scrape_loop(poll_seconds: int = 60):
                         continue
                     # Retry scraping without proxy using the refreshed cookies
                     try:
-                        print(f"[Scrape Loop] Retry after login (uc=True, headless={_is_headless()})")
+                        print(f"[Scrape Loop] Retry after login (uc=False, headless={_is_headless()})")
                         
                         with SB(
-                            uc=True,
+                            uc=False,
                             headless=_is_headless(),
                             xvfb=True,
                             agent=_realistic_user_agent(),
