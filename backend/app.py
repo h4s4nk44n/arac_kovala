@@ -210,6 +210,86 @@ def _bypass_turnstile_if_present(sb, max_wait_seconds: int = 40) -> bool:
 
     return False
 
+def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
+    """
+    Handle Cloudflare "I'm human" checkbox challenges embedded in an iframe.
+    Returns True if we detected and attempted to solve the challenge (and it cleared),
+    False if nothing was detected or could not be solved within the time window.
+    """
+    def _challenge_present() -> bool:
+        try:
+            # Look for Cloudflare challenge iframe(s)
+            iframes = sb.find_elements('css selector',
+                'iframe[src*="challenges.cloudflare.com"], iframe[title*="Cloudflare" i], iframe[src*="turnstile"]')
+            return bool(iframes)
+        except Exception:
+            return False
+
+    def _cleared() -> bool:
+        try:
+            # Heuristic: no challenge iframe visible and page text not showing the prompt
+            has_iframe = _challenge_present()
+            html = (sb.get_page_source() or '').lower()
+            text_present = ("gerçek kişi olduğunuzu doğrulayın" in html) or ("cloudflare" in html and "challenge" in html)
+            return (not has_iframe) and (not text_present)
+        except Exception:
+            return False
+
+    if not _challenge_present():
+        return False
+
+    start = time.time()
+    while time.time() - start < max_wait_seconds:
+        try:
+            if _cleared():
+                return True
+
+            # Try each iframe and click a checkbox-like control
+            frames = sb.find_elements('css selector',
+                'iframe[src*="challenges.cloudflare.com"], iframe[title*="Cloudflare" i], iframe[src*="turnstile"]')
+            for fr in frames:
+                try:
+                    sb.driver.switch_to.frame(fr)
+                    for sel in (
+                        'input[type="checkbox"]',
+                        'div[role="checkbox"]',
+                        'label[for]',
+                        'button[type="submit"]',
+                        '#challenge-stage input[type="checkbox"]',
+                    ):
+                        try:
+                            if sb.is_element_present(sel):
+                                try:
+                                    sb.cdp.click(sel)
+                                except Exception:
+                                    try:
+                                        sb.js_click(sel)
+                                    except Exception:
+                                        try:
+                                            sb.click(sel)
+                                        except Exception:
+                                            pass
+                                sb.sleep(1.5)
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        sb.driver.switch_to.default_content()
+                    except Exception:
+                        pass
+
+            # Small delay and re-check
+            sb.sleep(1.5)
+            if _cleared():
+                return True
+        except Exception:
+            pass
+
+    return False
+
 def build_brightdata_proxy_string(country_code="tr", session_id=None):
     """
     Returns PROXY_STRING in the format: username:password@host:port
@@ -317,6 +397,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                         _bypass_turnstile_if_present(sb, 40)
                     except Exception:
                         pass
+                    try:
+                        _solve_cloudflare_checkbox(sb, 60)
+                    except Exception:
+                        pass
                     _accept_cookie_banner_if_any_local(sb)
                     sb.wait_for_ready_state_complete()
                     if sb.is_element_present("#username") and sb.is_element_present("#password"):
@@ -375,6 +459,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             except Exception:
                 pass
             try:
+                _solve_cloudflare_checkbox(sb, 60)
+            except Exception:
+                pass
+            try:
                 sb.cdp.click("#username")
             except Exception:
                 pass
@@ -421,6 +509,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             sb.sleep(3)
             try:
                 _bypass_turnstile_if_present(sb, 20)
+            except Exception:
+                pass
+            try:
+                _solve_cloudflare_checkbox(sb, 60)
             except Exception:
                 pass
             # Extra diagnostics if still on login after submit
@@ -472,6 +564,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     pass
             try:
                 _bypass_turnstile_if_present(sb, 20)
+            except Exception:
+                pass
+            try:
+                _solve_cloudflare_checkbox(sb, 60)
             except Exception:
                 pass
             _accept_cookie_banner_if_any_local(sb)
@@ -678,6 +774,10 @@ def scrape_sahibinden(sb, url, known_posts):
         sb.get(url)
         try:
             _bypass_turnstile_if_present(sb, 30)
+        except Exception:
+            pass
+        try:
+            _solve_cloudflare_checkbox(sb, 60)
         except Exception:
             pass
         _accept_cookie_banner_if_any()
