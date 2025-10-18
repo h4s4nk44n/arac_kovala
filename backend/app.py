@@ -150,14 +150,24 @@ def _get_chrome_profile_dir() -> str:
     """
     Returns a persistent Chrome profile directory to increase realism across runs.
     Uses CHROME_PROFILE_DIR if provided; otherwise stores under DATA_DIR.
+    Each session gets a unique subdirectory to avoid lock conflicts.
     """
     dir_from_env = os.getenv("CHROME_PROFILE_DIR")
-    profile_dir = dir_from_env.strip() if dir_from_env else os.path.join(DATA_DIR, "chrome_profile")
+    if not dir_from_env or not dir_from_env.strip():
+        # If not set, return None to use temp profile
+        return None
+    
+    base_profile = dir_from_env.strip()
     try:
+        os.makedirs(base_profile, exist_ok=True)
+        # Use a session-unique subdirectory to avoid locks
+        import threading
+        thread_id = threading.get_ident()
+        profile_dir = os.path.join(base_profile, f"session_{thread_id}")
         os.makedirs(profile_dir, exist_ok=True)
+        return profile_dir
     except Exception:
-        pass
-    return profile_dir
+        return None
 
 def _humanize_session(sb, moves: int = 10):
     """
