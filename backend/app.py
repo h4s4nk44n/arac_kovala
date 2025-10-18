@@ -218,16 +218,33 @@ def _is_headless() -> bool:
 
 def _verify_chrome_binary():
     """Verify Chrome binary exists and is executable at startup."""
+    import subprocess
     chrome_bin = os.getenv("CHROME_BIN") or os.getenv("SB_CHROME_BINARY") or "/usr/bin/google-chrome"
     if os.path.exists(chrome_bin) and os.access(chrome_bin, os.X_OK):
         print(f"✓ Chrome binary found and executable: {chrome_bin}")
         try:
-            import subprocess
             result = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, timeout=5)
             print(f"✓ Chrome version: {result.stdout.strip()}")
+            
+            # Test minimal headless launch
+            print("Testing Chrome minimal launch...")
+            test_result = subprocess.run(
+                [chrome_bin, "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", 
+                 "--disable-gpu", "--no-first-run", "--dump-dom", "about:blank"],
+                capture_output=True, text=True, timeout=10
+            )
+            if test_result.returncode == 0:
+                print("✓ Chrome minimal launch successful")
+            else:
+                print(f"⚠ Chrome launch test failed with code {test_result.returncode}")
+                if test_result.stderr:
+                    print(f"  stderr: {test_result.stderr[:500]}")
             return True
+        except subprocess.TimeoutExpired:
+            print(f"⚠ Chrome test timed out (may indicate resource starvation)")
+            return False
         except Exception as e:
-            print(f"⚠ Chrome version check failed: {e}")
+            print(f"⚠ Chrome test failed: {e}")
             return False
     else:
         print(f"✗ Chrome binary not found or not executable: {chrome_bin}")
