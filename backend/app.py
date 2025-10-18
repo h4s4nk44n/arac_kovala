@@ -707,7 +707,7 @@ def _scrape_loop(poll_seconds: int = 60):
                         proxy=None,
                     ) as sb:
                         try:
-                        sb.driver.execute_cdp_cmd(
+                            sb.driver.execute_cdp_cmd(
                             "Page.addScriptToEvaluateOnNewDocument",
                             {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
                         )
