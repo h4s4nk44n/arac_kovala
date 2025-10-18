@@ -146,6 +146,83 @@ def _prime_anon_cookies(sb):
     print("Bypassing legacy cookie priming. Session will be handled by the scraper.")
     pass
 
+def _realistic_user_agent() -> str:
+    """
+    Return a modern desktop Chrome UA. Can be overridden via BROWSER_UA env.
+    Defaults to a UA aligned with Chrome 141 series (matches undetected driver log).
+    """
+    ua_env = os.getenv("BROWSER_UA")
+    if ua_env:
+        return ua_env.strip()
+    return (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/141.0.7390.78 Safari/537.36"
+    )
+
+def _apply_stealth(sb):
+    """
+    Apply a set of stealth tweaks via Chrome DevTools to look like a real user.
+    - UA and Accept-Language
+    - Timezone to Europe/Istanbul
+    - navigator.* properties common to real desktops
+    """
+    try:
+        # User-Agent and language
+        ua = _realistic_user_agent()
+        try:
+            sb.driver.execute_cdp_cmd("Network.enable", {})
+        except Exception:
+            pass
+        try:
+            sb.driver.execute_cdp_cmd(
+                "Network.setExtraHTTPHeaders",
+                {"headers": {"Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"}},
+            )
+        except Exception:
+            pass
+        try:
+            sb.driver.execute_cdp_cmd(
+                "Emulation.setUserAgentOverride",
+                {"userAgent": ua, "acceptLanguage": "tr-TR", "platform": "Windows"},
+            )
+        except Exception:
+            pass
+
+        # Timezone
+        try:
+            sb.driver.execute_cdp_cmd(
+                "Emulation.setTimezoneOverride", {"timezoneId": "Europe/Istanbul"}
+            )
+        except Exception:
+            pass
+
+        # Hide automation and set common navigator properties
+        stealth_js = """
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'languages', {get: () => ['tr-TR','tr','en-US','en']});
+            Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+            Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
+            Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+            // Fake plugins length
+            Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+            // WebGL vendor/renderer shim
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter){
+                if (parameter === 37445) { return 'Intel Inc.'; } // UNMASKED_VENDOR_WEBGL
+                if (parameter === 37446) { return 'Intel(R) UHD Graphics 620'; } // UNMASKED_RENDERER_WEBGL
+                return getParameter.apply(this, arguments);
+            };
+        """
+        try:
+            sb.driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_js}
+            )
+        except Exception:
+            pass
+    except Exception:
+        pass
+
 def _bypass_turnstile_if_present(sb, max_wait_seconds: int = 40) -> bool:
     """
     Detect Cloudflare Turnstile "Tarayıcınızı kontrol ediyoruz..." page and attempt to proceed.
@@ -430,13 +507,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             uc=True,
             headless=False,
             xvfb=True,
-            agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
+            agent=_realistic_user_agent(),
             locale_code="tr-TR",
-            window_size="1366,768",
+            window_size="1600,900",
             proxy=proxy_string,
         ) as sb:
             try:
@@ -444,6 +517,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     "Page.addScriptToEvaluateOnNewDocument",
                     {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
                 )
+            except Exception:
+                pass
+            try:
+                _apply_stealth(sb)
             except Exception:
                 pass
 
@@ -1059,13 +1136,9 @@ def _scrape_loop(poll_seconds: int = 60):
                         uc=True,
                         headless=False,
                         xvfb=True,
-                        agent=(
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/120.0.0.0 Safari/537.36"
-                        ),
+                        agent=_realistic_user_agent(),
                         locale_code="tr-TR",
-                        window_size="1366,768",
+                        window_size="1600,900",
                         proxy=None,
                     ) as sb:
                         try:
@@ -1073,6 +1146,10 @@ def _scrape_loop(poll_seconds: int = 60):
                             "Page.addScriptToEvaluateOnNewDocument",
                             {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
                         )
+                        except Exception:
+                            pass
+                        try:
+                            _apply_stealth(sb)
                         except Exception:
                             pass
                         try:
@@ -1097,13 +1174,9 @@ def _scrape_loop(poll_seconds: int = 60):
                             uc=True,
                             headless=False,
                             xvfb=True,
-                            agent=(
-                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                "Chrome/120.0.0.0 Safari/537.36"
-                            ),
+                            agent=_realistic_user_agent(),
                             locale_code="tr-TR",
-                            window_size="1366,768",
+                            window_size="1600,900",
                             proxy=None,
                         ) as sb:
                             try:
@@ -1111,6 +1184,10 @@ def _scrape_loop(poll_seconds: int = 60):
                                     "Page.addScriptToEvaluateOnNewDocument",
                                     {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
                                 )
+                            except Exception:
+                                pass
+                            try:
+                                _apply_stealth(sb)
                             except Exception:
                                 pass
                             try:
