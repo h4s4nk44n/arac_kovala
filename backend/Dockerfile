@@ -33,6 +33,6 @@ RUN pip install --upgrade pip setuptools wheel && \
 COPY . /app
 
 # Recommend environment flags for Chrome inside containers
-ENV EXTRA_CHROME_ARGS="--single-process,--disable-dev-shm-usage,--no-sandbox,--remote-debugging-port=0"
+ENV EXTRA_CHROME_ARGS="--single-process,--disable-dev-shm-usage,--no-sandbox"
 
 CMD ["bash", "-lc", "exec gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]

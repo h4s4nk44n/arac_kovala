@@ -197,7 +197,6 @@ def _get_chrome_args() -> list:
         "--disable-features=Translate,IsolateOrigins,site-per-process",
         "--no-first-run",
         "--no-default-browser-check",
-        "--remote-debugging-port=0",
         "--remote-allow-origins=*",
         "--disable-backgrounding-occluded-windows",
     ]
@@ -589,6 +588,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             user_data_dir=_get_chrome_profile_dir(),
             proxy=proxy_string,
             chromium_arg=_get_chrome_args(),
+            reuse_session=True,
         ) as sb:
             try:
                 sb.driver.execute_cdp_cmd(
