@@ -5,9 +5,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8080
 
-# Install Chromium, chromedriver, Xvfb, and dependencies
+## Install Google Chrome stable and runtime deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium chromium-driver \
+    ca-certificates curl gnupg apt-transport-https && \
+    install -d -m 0755 /etc/apt/keyrings && \
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-linux-signing-keyring.gpg && \
+    chmod a+r /etc/apt/keyrings/google-linux-signing-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-linux-signing-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    google-chrome-stable \
     fonts-liberation \
     libasound2 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
     libcairo2 libcups2 libdbus-1-3 libdrm2 \
@@ -15,13 +21,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 \
     libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
     libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 \
-    libgbm1 libxshmfence1 xdg-utils wget ca-certificates xvfb xauth \
-    libu2f-udev \
+    libgbm1 libxshmfence1 xdg-utils xvfb xauth \
+    libu2f-udev wget \
     scrot python3-tk python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
-ENV CHROME_BIN=/usr/bin/chromium \
-    SB_CHROME_BINARY=/usr/bin/chromium \
+ENV CHROME_BIN=/usr/bin/google-chrome \
+    SB_CHROME_BINARY=/usr/bin/google-chrome \
     HEADLESS=1 \
     DBUS_SESSION_BUS_ADDRESS=/dev/null
 
