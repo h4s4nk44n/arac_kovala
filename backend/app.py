@@ -241,18 +241,35 @@ def _try_uc_gui_click_captcha(sb, max_wait_seconds: int = 60) -> bool:
         return False
 
     start = time.time()
-    tried = False
+    attempts = 0
     while time.time() - start < max_wait_seconds:
         if _cleared():
-            return tried
+            return attempts > 0
         try:
-            tried = True
+            attempts += 1
             # Built-in SeleniumBase helper (GUI-based)
             sb.uc_gui_click_captcha()
         except Exception:
             pass
+        # Also try the explicit continue button if present
         try:
-            sb.sleep(1.5)
+            if sb.is_element_present('#btn-continue'):
+                try:
+                    sb.cdp.click('#btn-continue')
+                except Exception:
+                    try:
+                        sb.js_click('#btn-continue')
+                    except Exception:
+                        try:
+                            sb.click('#btn-continue')
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        # Small human-like jitter
+        try:
+            sb.sleep(1.0 + (random.random() * 0.7))
         except Exception:
             pass
         if _cleared():
@@ -512,7 +529,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             except Exception:
                 pass
             try:
-                _try_uc_gui_click_captcha(sb, 30)
+                _try_uc_gui_click_captcha(sb, 45)
             except Exception:
                 pass
             try:
@@ -569,7 +586,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             except Exception:
                 pass
             try:
-                _try_uc_gui_click_captcha(sb, 30)
+                _try_uc_gui_click_captcha(sb, 45)
             except Exception:
                 pass
             try:
@@ -628,7 +645,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             except Exception:
                 pass
             try:
-                _try_uc_gui_click_captcha(sb, 30)
+                _try_uc_gui_click_captcha(sb, 45)
             except Exception:
                 pass
             try:
@@ -842,7 +859,7 @@ def scrape_sahibinden(sb, url, known_posts):
         except Exception:
             pass
         try:
-            _try_uc_gui_click_captcha(sb, 30)
+            _try_uc_gui_click_captcha(sb, 45)
         except Exception:
             pass
         try:
