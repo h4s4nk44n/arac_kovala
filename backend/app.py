@@ -218,8 +218,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 "https://www.sahibinden.com/giris",
             ]
             loaded = False
+            attempt_idx = 0
             for login_url in login_urls:
                 try:
+                    attempt_idx += 1
                     sb.uc_open_with_reconnect(login_url, 4)
                     _accept_cookie_banner_if_any_local(sb)
                     sb.wait_for_ready_state_complete()
@@ -229,8 +231,48 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     sb.sleep(0.8)
                 except Exception as e:
                     print("Login page open failed:", e)
+                    # Save diagnostics for this failed attempt
+                    try:
+                        ts_diag = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                        shot = os.path.join(SCREENSHOTS_DIR, f"proxy_login_attempt_{attempt_idx}_{ts_diag}.png")
+                        sb.save_screenshot(shot)
+                        html = ""
+                        try:
+                            html = sb.get_page_source()
+                        except Exception:
+                            try:
+                                html = sb.driver.page_source
+                            except Exception:
+                                html = ""
+                        if html:
+                            html_path = os.path.join(HTML_SNAPSHOTS_DIR, f"proxy_login_attempt_{attempt_idx}_{ts_diag}.html")
+                            with open(html_path, 'w', encoding='utf-8') as f:
+                                f.write(html)
+                            print(f"Saved proxy login diagnostics: {shot} , {html_path}")
+                    except Exception:
+                        pass
             if not loaded:
                 print("Failed to open a login page.")
+                # Final diagnostics when no login URL could be opened
+                try:
+                    ts_fail = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    shotf = os.path.join(SCREENSHOTS_DIR, f"proxy_login_failed_open_{ts_fail}.png")
+                    sb.save_screenshot(shotf)
+                    htmlf = ""
+                    try:
+                        htmlf = sb.get_page_source()
+                    except Exception:
+                        try:
+                            htmlf = sb.driver.page_source
+                        except Exception:
+                            htmlf = ""
+                    if htmlf:
+                        htmlf_path = os.path.join(HTML_SNAPSHOTS_DIR, f"proxy_login_failed_open_{ts_fail}.html")
+                        with open(htmlf_path, 'w', encoding='utf-8') as f:
+                            f.write(htmlf)
+                        print(f"Saved proxy login final diagnostics: {shotf} , {htmlf_path}")
+                except Exception:
+                    pass
                 return False
 
             # Type credentials and submit
@@ -279,6 +321,27 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                         pass
 
             sb.sleep(3)
+            # Extra diagnostics if still on login after submit
+            try:
+                if _still_on_login():
+                    ts_after = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    shot2 = os.path.join(SCREENSHOTS_DIR, f"proxy_login_after_submit_{ts_after}.png")
+                    sb.save_screenshot(shot2)
+                    html2 = ""
+                    try:
+                        html2 = sb.get_page_source()
+                    except Exception:
+                        try:
+                            html2 = sb.driver.page_source
+                        except Exception:
+                            html2 = ""
+                    if html2:
+                        html2_path = os.path.join(HTML_SNAPSHOTS_DIR, f"proxy_login_after_submit_{ts_after}.html")
+                        with open(html2_path, 'w', encoding='utf-8') as f:
+                            f.write(html2)
+                        print(f"Saved proxy login post-submit diagnostics: {shot2} , {html2_path}")
+            except Exception:
+                pass
 
             # Basic validation: still on login?
             def _still_on_login() -> bool:
