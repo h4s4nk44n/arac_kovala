@@ -163,7 +163,7 @@ def build_brightdata_proxy_string(country_code="tr", session_id=None):
         session_id = secrets.token_hex(4)
 
     username = f"{base_user}-country-{country_code}-session-{session_id}"
-    return f"{base_user}:{password}@{host}:{port}"
+    return f"{host}:{port}:{username}:{password}"
     
 def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     """
