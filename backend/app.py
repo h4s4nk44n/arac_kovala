@@ -189,22 +189,11 @@ def _get_chrome_args() -> list:
     Chrome flags for container stability. Allows extra args via EXTRA_CHROME_ARGS
     (comma-separated). Forces safer defaults for Railway (no-sandbox, shm fix).
     """
-    base = [
-        "--no-sandbox",
-        "--disable-dev-shm-usage",
-        "--no-zygote",
-        "--disable-gpu",
-        "--disable-software-rasterizer",
-        "--disable-features=Translate,IsolateOrigins,site-per-process",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--remote-allow-origins=*",
-        "--disable-backgrounding-occluded-windows",
-    ]
+    # Keep this minimal; excessive flags can break DevTools connection
+    base = ["--no-sandbox", "--disable-dev-shm-usage"]
     # Add headless flag if requested via env
     if _env_true("HEADLESS", "0"):
         base.append("--headless=new")
-        base.append("--disable-dev-tools")
     extra = (os.getenv("EXTRA_CHROME_ARGS") or "").strip()
     if extra:
         for token in [t.strip() for t in extra.split(",") if t.strip()]:
@@ -596,6 +585,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             user_data_dir=_get_chrome_profile_dir(),
             proxy=proxy_string,
             chromium_arg=_get_chrome_args(),
+            external_pdf=False,
         ) as sb:
             try:
                 sb.driver.execute_cdp_cmd(
@@ -1249,6 +1239,7 @@ def _scrape_loop(poll_seconds: int = 60):
                         user_data_dir=_get_chrome_profile_dir(),
                         proxy=None,
                         chromium_arg=_get_chrome_args(),
+                        external_pdf=False,
                     ) as sb:
                         try:
                             sb.driver.execute_cdp_cmd(
@@ -1294,6 +1285,7 @@ def _scrape_loop(poll_seconds: int = 60):
                             user_data_dir=_get_chrome_profile_dir(),
                             proxy=None,
                             chromium_arg=_get_chrome_args(),
+                            external_pdf=False,
                         ) as sb:
                             try:
                                 sb.driver.execute_cdp_cmd(
