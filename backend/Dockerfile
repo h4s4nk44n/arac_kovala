@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV CHROME_BIN=/usr/bin/chromium \
     SB_CHROME_BINARY=/usr/bin/chromium \
-    HEADLESS=0 \
+    HEADLESS=1 \
     DBUS_SESSION_BUS_ADDRESS=/dev/null
 
 WORKDIR /app
@@ -33,6 +33,6 @@ RUN pip install --upgrade pip setuptools wheel && \
 COPY . /app
 
 # Recommend environment flags for Chrome inside containers
-ENV EXTRA_CHROME_ARGS="--single-process,--disable-dev-shm-usage,--no-sandbox"
+ENV EXTRA_CHROME_ARGS="--single-process,--disable-dev-shm-usage,--no-sandbox,--no-zygote"
 
 CMD ["bash", "-lc", "exec gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]

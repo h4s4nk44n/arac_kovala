@@ -192,6 +192,7 @@ def _get_chrome_args() -> list:
     base = [
         "--no-sandbox",
         "--disable-dev-shm-usage",
+        "--no-zygote",
         "--disable-gpu",
         "--disable-software-rasterizer",
         "--disable-features=Translate,IsolateOrigins,site-per-process",
@@ -200,11 +201,17 @@ def _get_chrome_args() -> list:
         "--remote-allow-origins=*",
         "--disable-backgrounding-occluded-windows",
     ]
+    # Add headless flag if requested via env
+    if _env_true("HEADLESS", "0"):
+        base.append("--headless=new")
     extra = (os.getenv("EXTRA_CHROME_ARGS") or "").strip()
     if extra:
         for token in [t.strip() for t in extra.split(",") if t.strip()]:
             base.append(token)
     return base
+
+def _is_headless() -> bool:
+    return _env_true("HEADLESS", "0")
 
     # Gentle scrolling down and up a bit
     try:
@@ -580,7 +587,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     try:
         with SB(
             uc=True,
-            headless=False,
+            headless=_is_headless(),
             xvfb=True,
             agent=_realistic_user_agent(),
             locale_code="tr-TR",
@@ -1234,7 +1241,7 @@ def _scrape_loop(poll_seconds: int = 60):
                 try:
                     with SB(
                         uc=True,
-                        headless=False,
+                        headless=_is_headless(),
                         xvfb=True,
                         agent=_realistic_user_agent(),
                         locale_code="tr-TR",
@@ -1279,7 +1286,7 @@ def _scrape_loop(poll_seconds: int = 60):
                     try:
                         with SB(
                             uc=True,
-                            headless=False,
+                            headless=_is_headless(),
                             xvfb=True,
                             agent=_realistic_user_agent(),
                             locale_code="tr-TR",
