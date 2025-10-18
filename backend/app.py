@@ -13,14 +13,9 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 import mimetypes
 from urllib.parse import urlsplit
-from pyvirtualdisplay import Display
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchFrameException
+ 
 import sys # Import sys to check the operating system
-
+import secrets
 import requests
 
 
@@ -57,6 +52,10 @@ SESSION_COOKIE_FILE = os.getenv("SESSION_COOKIE_FILE", os.path.join(DATA_DIR, "s
 CAPTCHA_MAX_RELOAD_CLICKS = int(os.getenv("CAPTCHA_MAX_RELOAD_CLICKS", "20"))
 LOGIN_RECLICK_RETRIES = int(os.getenv("LOGIN_RECLICK_RETRIES", "2"))
 LOGIN_RECLICK_WAIT_SEC = int(os.getenv("LOGIN_RECLICK_WAIT_SEC", "3"))
+
+
+class NeedsLogin(Exception):
+    pass
 
 
 def _parse_netscape_cookies_txt(text: str, domain_filter: str = "sahibinden.com"):
@@ -147,7 +146,178 @@ def _prime_anon_cookies(sb):
     print("Bypassing legacy cookie priming. Session will be handled by the scraper.")
     pass
 
+def build_brightdata_proxy_string(country_code="tr", session_id=None):
+    """
+    Returns PROXY_STRING in the format: username:password@host:port
+    - Adds -country-<code> and -session-<id> to the Bright Data username
+    """
+    base_user = os.getenv("BRD_BASE_USER", "")
+    password  = os.getenv("BRD_PASSWORD", "")
+    host      = os.getenv("BRD_HOST", "")
+    port      = os.getenv("BRD_PORT", "")
+    if not (base_user and password and host and port):
+        return None
 
+    if not session_id:
+        # short sticky session token; change to rotate
+        session_id = secrets.token_hex(4)
+
+    username = f"{base_user}-country-{country_code}-session-{session_id}"
+    return f"{username}:{password}@{host}:{port}"
+    
+def login_with_proxy_and_save_cookies(target_url: str) -> bool:
+    """
+    Open a fresh browser WITH proxy, perform login, save cookies to SESSION_COOKIE_FILE,
+    close the browser, and return whether login succeeded.
+    """
+    SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
+    SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
+    proxy_string = build_brightdata_proxy_string()
+    if not proxy_string:
+        print("ERROR: Bright Data proxy env vars (BRD_*) not set. Cannot perform proxy-backed login.")
+        return False
+
+    if not SAHIBINDEN_USER or not SAHIBINDEN_PASS:
+        print("ERROR: SAHIBINDEN_USER/SAHIBINDEN_PASS not set. Cannot login.")
+        return False
+
+    def _accept_cookie_banner_if_any_local(sb):
+        try:
+            if sb.is_element_present("#onetrust-accept-btn-handler"):
+                sb.js_click("#onetrust-accept-btn-handler")
+                time.sleep(0.5)
+        except Exception:
+            pass
+
+    try:
+        with SB(
+            uc=True,
+            headless=False,
+            xvfb=True,
+            agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            locale_code="tr-TR",
+            window_size="1366,768",
+            proxy=proxy_string,
+        ) as sb:
+            try:
+                sb.driver.execute_cdp_cmd(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
+                )
+            except Exception:
+                pass
+
+            # Load login page
+            login_urls = [
+                "https://secure2.sahibinden.com/giris",
+                "https://secure.sahibinden.com/giris",
+                "https://www.sahibinden.com/giris",
+            ]
+            loaded = False
+            for login_url in login_urls:
+                try:
+                    sb.uc_open_with_reconnect(login_url, 4)
+                    _accept_cookie_banner_if_any_local(sb)
+                    sb.wait_for_ready_state_complete()
+                    if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                        loaded = True
+                        break
+                    sb.sleep(0.8)
+                except Exception as e:
+                    print("Login page open failed:", e)
+            if not loaded:
+                print("Failed to open a login page.")
+                return False
+
+            # Type credentials and submit
+            try:
+                sb.cdp.click("#username")
+            except Exception:
+                pass
+            try:
+                sb.cdp.press_keys("#username", SAHIBINDEN_USER)
+            except Exception:
+                sb.type("#username", SAHIBINDEN_USER)
+            sb.sleep(0.6)
+            try:
+                sb.cdp.click("#password")
+            except Exception:
+                pass
+            try:
+                sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
+            except Exception:
+                sb.type("#password", SAHIBINDEN_PASS)
+
+            submitted = False
+            for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
+                try:
+                    if sb.is_element_present(sel):
+                        try:
+                            sb.cdp.click(sel)
+                        except Exception:
+                            try:
+                                sb.js_click(sel)
+                            except Exception:
+                                sb.click(sel)
+                        submitted = True
+                        break
+                except Exception:
+                    continue
+            if not submitted:
+                try:
+                    sb.cdp.press_keys("#password", "\n")
+                    submitted = True
+                except Exception:
+                    try:
+                        sb.press_keys("#password", "\n")
+                        submitted = True
+                    except Exception:
+                        pass
+
+            sb.sleep(3)
+
+            # Basic validation: still on login?
+            def _still_on_login() -> bool:
+                try:
+                    u = (sb.get_current_url() or "").lower()
+                except Exception:
+                    u = ""
+                if ("login" in u) or ("giris" in u):
+                    return True
+                try:
+                    return sb.is_element_present("#username")
+                except Exception:
+                    return False
+
+            if _still_on_login():
+                print("Login did not succeed with proxy.")
+                return False
+
+            # Navigate to target and save cookies
+            try:
+                sb.uc_open_with_reconnect(target_url, 4)
+            except Exception:
+                try:
+                    sb.get(target_url)
+                except Exception:
+                    pass
+            _accept_cookie_banner_if_any_local(sb)
+            try:
+                with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(sb.get_cookies(), f)
+                print(f"Saved session cookies to {SESSION_COOKIE_FILE} (via proxy login)")
+            except Exception as e:
+                print("Saving cookies failed:", e)
+                return False
+            return True
+    except Exception as e:
+        print("Proxy login session failed:", e)
+        return False
+    
 def send_push_notification(title, body, data={}):
     if not PUSH_TOKENS:
         print("No registered devices to send notifications to.")
@@ -278,1220 +448,76 @@ def scrape_sahibinden(sb, url, known_posts):
         except Exception as e:
             print("save cookies failed:", e)
 
-    def solve_captcha_with_buster(sb, attempt: int = 1):
-        print("Attempting to solve CAPTCHA using Buster (audio method)...")
+    # Prefer persistent session on disk; seed from env only if no file
+    cookies_loaded_successfully = False
+    if os.path.exists(SESSION_COOKIE_FILE):
+        print(f"Attempting to load session from file: {SESSION_COOKIE_FILE}")
         try:
-            # Save a screenshot before any CAPTCHA interactions
-            try:
-                ts_pre = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                pre_cap_path = os.path.join(SCREENSHOTS_DIR, f"captcha_before_{ts_pre}.png")
-                sb.save_screenshot(pre_cap_path)
-                print(f"Saved pre-captcha screenshot: {pre_cap_path}")
-            except Exception as _e:
-                print("Failed to capture pre-captcha screenshot:", _e)
-            # Try to switch to the visible challenge iframe first; if not found, fall back to scanning all iframes
-            challenge_iframe_element = None
-            try:
-                challenge_iframe_selector = 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'
-                sb.wait_for_element_present(challenge_iframe_selector, timeout=20)
-                challenge_iframe_element = sb.find_element("css selector", challenge_iframe_selector)
-                sb.switch_to_frame(challenge_iframe_element)
-                print("Switched to CAPTCHA challenge iframe (direct selector).")
-            except Exception as _e1:
-                print("Direct challenge iframe wait failed, scanning all iframes...", _e1)
+            with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as f:
+                file_cookies = json.load(f)
+            prepared = _prepare_cookies(file_cookies)
+            sb.get("https://www.sahibinden.com/")
+            _accept_cookie_banner_if_any()
+            for host in ("https://www.sahibinden.com/", "https://secure.sahibinden.com/", "https://secure2.sahibinden.com/"):
                 try:
-                    # Click the anchor checkbox if present to trigger the challenge
-                    try:
-                        sb.switch_to_default_content()
-                    except Exception:
-                        pass
-                    anchor_iframe_selector = 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]'
-                    if sb.is_element_present(anchor_iframe_selector):
-                        try:
-                            anchor_iframe = sb.find_element("css selector", anchor_iframe_selector)
-                            sb.switch_to_frame(anchor_iframe)
-                            if sb.is_element_present('#recaptcha-anchor'):
-                                try:
-                                    sb.click('#recaptcha-anchor')
-                                except Exception:
-                                    sb.js_click('#recaptcha-anchor')
-                            sb.switch_to_default_content()
-                            sb.sleep(1.0)
-                        except Exception:
-                            try:
-                                sb.switch_to_default_content()
-                            except Exception:
-                                pass
-
-                    # Enumerate all iframes to find the challenge
-                    try:
-                        frames = sb.find_elements('css selector', 'iframe')
-                    except Exception:
-                        frames = []
-                    for fr in frames:
-                        try:
-                            sb.switch_to_frame(fr)
-                            if sb.is_element_present('#recaptcha-audio-button') or sb.is_element_present('.rc-imageselect') or sb.is_element_present('button#recaptcha-verify-button'):
-                                challenge_iframe_element = fr
-                                print("Found CAPTCHA challenge by scanning iframes.")
-                                break
-                            sb.switch_to_default_content()
-                        except Exception:
-                            try:
-                                sb.switch_to_default_content()
-                            except Exception:
-                                pass
-                    if challenge_iframe_element is None:
-                        print("Could not locate a visible reCAPTCHA challenge iframe.")
-                        return False
-                except Exception as _e2:
-                    print("Scanning iframes for challenge failed:", _e2)
-                    return False
-
-            # Save HTML and Screenshot inside the challenge for debugging
-            try:
-                ts_cap = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                # Save outer/root HTML
-                try:
-                    try:
-                        sb.switch_to_default_content()
-                    except Exception:
-                        pass
-                    try:
-                        root_html = sb.get_page_source()
-                    except Exception:
-                        try:
-                            root_html = sb.driver.page_source
-                        except Exception:
-                            root_html = ""
-                    if root_html:
-                        root_path = os.path.join(HTML_SNAPSHOTS_DIR, f"captcha_first_seen_root_{ts_cap}.html")
-                        with open(root_path, 'w', encoding='utf-8') as f:
-                            f.write(root_html)
-                        print(f"Saved captcha first-seen ROOT html: {root_path}")
-                except Exception:
-                    pass
-
-                # Save iframe HTML (challenge context)
-                try:
-                    try:
-                        sb.switch_to_frame(challenge_iframe_element)
-                    except Exception:
-                        pass
-                    try:
-                        iframe_html = sb.get_page_source()
-                    except Exception:
-                        try:
-                            iframe_html = sb.driver.page_source
-                        except Exception:
-                            iframe_html = ""
-                    if iframe_html:
-                        iframe_path = os.path.join(HTML_SNAPSHOTS_DIR, f"captcha_first_seen_iframe_{ts_cap}.html")
-                        with open(iframe_path, 'w', encoding='utf-8') as f:
-                            f.write(iframe_html)
-                        print(f"Saved captcha first-seen IFRAME html: {iframe_path}")
-                except Exception:
-                    pass
-
-                sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_iframe_{ts_cap}.png"))
-            except Exception:
-                pass
-
-            # Click the audio button to get an audio challenge. If blocked, try reload loop.
-            audio_button_selector = "#recaptcha-audio-button"
-            try:
-                sb.wait_for_element_visible(audio_button_selector, timeout=15)
-            except Exception:
-                # We might be in hard-block UI. Capture HTML and try clicking reload repeatedly across frames.
-                print("Audio button not visible; attempting reload loop to bypass block...")
-                # Save HTML snapshot of error/overlay state
-                try:
-                    ts_err = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    try:
-                        sb.switch_to_default_content()
-                    except Exception:
-                        pass
-                    try:
-                        root_html2 = sb.get_page_source()
-                    except Exception:
-                        try:
-                            root_html2 = sb.driver.page_source
-                        except Exception:
-                            root_html2 = ""
-                    if root_html2:
-                        root_err_path = os.path.join(HTML_SNAPSHOTS_DIR, f"captcha_error_root_{ts_err}.html")
-                        with open(root_err_path, 'w', encoding='utf-8') as f:
-                            f.write(root_html2)
-                        print(f"Saved captcha ERROR root html: {root_err_path}")
-
-                    # Try to save challenge iframe HTML if present
-                    try:
-                        challenge_iframe_selector2 = 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'
-                        if sb.is_element_present(challenge_iframe_selector2):
-                            fr = sb.find_element('css selector', challenge_iframe_selector2)
-                            sb.switch_to_frame(fr)
-                            try:
-                                iframe_html2 = sb.get_page_source()
-                            except Exception:
-                                try:
-                                    iframe_html2 = sb.driver.page_source
-                                except Exception:
-                                    iframe_html2 = ""
-                            if iframe_html2:
-                                iframe_err_path = os.path.join(HTML_SNAPSHOTS_DIR, f"captcha_error_iframe_{ts_err}.html")
-                                with open(iframe_err_path, 'w', encoding='utf-8') as f:
-                                    f.write(iframe_html2)
-                                print(f"Saved captcha ERROR iframe html: {iframe_err_path}")
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-                def _click_reload_once() -> bool:
-                    clicked_local = False
-                    try:
-                        # Search current frame first
-                        for sel in (
-                            '#recaptcha-reload-button',
-                            'button#recaptcha-reload-button',
-                            '.rc-button-reload',
-                            '.rc-doscaptcha-reload',
-                            '.rc-doscaptcha [role="button"]',
-                            '.rc-button[role="button"]',
-                            '.rc-button',
-                            'div[role="button"]'
-                        ):
-                            try:
-                                if sb.is_element_present(sel):
-                                    try:
-                                        sb.cdp.click(sel)
-                                    except Exception:
-                                        try:
-                                            sb.js_click(sel)
-                                        except Exception:
-                                            sb.click(sel)
-                                    clicked_local = True
-                                    break
-                            except Exception:
-                                continue
-                        if not clicked_local:
-                            # Search all iframes
-                            try:
-                                sb.switch_to_default_content()
-                            except Exception:
-                                pass
-                            try:
-                                frames3 = sb.find_elements('css selector', 'iframe')
-                            except Exception:
-                                frames3 = []
-                            for fr3 in frames3:
-                                try:
-                                    sb.switch_to_frame(fr3)
-                                    for sel in (
-                                        '#recaptcha-reload-button',
-                                        'button#recaptcha-reload-button',
-                                        '.rc-button-reload',
-                                        '.rc-doscaptcha-reload',
-                                        '.rc-doscaptcha [role="button"]',
-                                        '.rc-button[role="button"]',
-                                        '.rc-button',
-                                        'div[role="button"]'
-                                    ):
-                                        try:
-                                            if sb.is_element_present(sel):
-                                                try:
-                                                    sb.cdp.click(sel)
-                                                except Exception:
-                                                    try:
-                                                        sb.js_click(sel)
-                                                    except Exception:
-                                                        sb.click(sel)
-                                                clicked_local = True
-                                                break
-                                        except Exception:
-                                            continue
-                                    if clicked_local:
-                                        break
-                                    sb.switch_to_default_content()
-                                except Exception:
-                                    try:
-                                        sb.switch_to_default_content()
-                                    except Exception:
-                                        pass
-                        # If still not clicked, try reopening the anchor to re-trigger the challenge
-                        if not clicked_local:
-                            try:
-                                sb.switch_to_default_content()
-                            except Exception:
-                                pass
-                            try:
-                                anchor_iframe_selector2 = 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]'
-                                if sb.is_element_present(anchor_iframe_selector2):
-                                    aif = sb.find_element('css selector', anchor_iframe_selector2)
-                                    sb.switch_to_frame(aif)
-                                    if sb.is_element_present('#recaptcha-anchor'):
-                                        try:
-                                            sb.cdp.click('#recaptcha-anchor')
-                                        except Exception:
-                                            try:
-                                                sb.js_click('#recaptcha-anchor')
-                                            except Exception:
-                                                sb.click('#recaptcha-anchor')
-                                        clicked_local = True
-                            except Exception:
-                                pass
-                        # If DoS overlay is present, try clicking the dedicated reset button (#reset-button) in any challenge frame
-                        if not clicked_local:
-                            try:
-                                try:
-                                    sb.switch_to_default_content()
-                                except Exception:
-                                    pass
-                                frames_reset = []
-                                try:
-                                    frames_reset = sb.find_elements('css selector', 'iframe')
-                                except Exception:
-                                    frames_reset = []
-                                for frx in frames_reset:
-                                    try:
-                                        sb.switch_to_frame(frx)
-                                        if sb.is_element_present('#reset-button'):
-                                            try:
-                                                sb.cdp.click('#reset-button')
-                                            except Exception:
-                                                try:
-                                                    sb.js_click('#reset-button')
-                                                except Exception:
-                                                    sb.click('#reset-button')
-                                            print("Clicked reCAPTCHA reset button inside challenge frame.")
-                                            clicked_local = True
-                                            break
-                                        sb.switch_to_default_content()
-                                    except Exception:
-                                        try:
-                                            sb.switch_to_default_content()
-                                        except Exception:
-                                            pass
-                            except Exception:
-                                pass
-                        # Last resort: click center of DOS captcha overlay if present
-                        if not clicked_local:
-                            try:
-                                for overlay_sel in ('.rc-doscaptcha', '.rc-doscaptcha-body', '.rc-anchor-error-msg-container'):
-                                    try:
-                                        if sb.is_element_present(overlay_sel):
-                                            el = sb.find_element('css selector', overlay_sel)
-                                            rect = sb.driver.execute_script('var r = arguments[0].getBoundingClientRect(); return {x:r.left + r.width/2, y:r.top + r.height/2};', el)
-                                            cx, cy = int(rect.get('x', 0)), int(rect.get('y', 0))
-                                            sb.cdp.send('Input.dispatchMouseEvent', {"type":"mousePressed","x":cx,"y":cy,"button":"left","clickCount":1})
-                                            sb.cdp.send('Input.dispatchMouseEvent', {"type":"mouseReleased","x":cx,"y":cy,"button":"left","clickCount":1})
-                                            clicked_local = True
-                                            break
-                                    except Exception:
-                                        continue
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                    try:
-                        sb.switch_to_default_content()
-                    except Exception:
-                        pass
-                    return clicked_local
-
-                reload_clicks = 0
-                while reload_clicks < CAPTCHA_MAX_RELOAD_CLICKS:
-                    did = _click_reload_once()
-                    reload_clicks += 1 if did else 0
-                    sb.sleep(1.0)
-                    # After each reload, re-check for audio button
-                    try:
-                        # Find a challenge frame again
-                        challenge_iframe_selector2 = 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'
-                        if sb.is_element_present(challenge_iframe_selector2):
-                            fr = sb.find_element('css selector', challenge_iframe_selector2)
-                            sb.switch_to_frame(fr)
-                        if sb.is_element_present(audio_button_selector):
-                            print("Audio button became visible after reload.")
-                            break
-                    except Exception:
-                        try:
-                            sb.switch_to_default_content()
-                        except Exception:
-                            pass
-                # Final check; avoid throwing if still not visible
-                try:
-                    sb.wait_for_element_visible(audio_button_selector, timeout=5)
-                except Exception:
-                    try:
-                        sb.switch_to_default_content()
-                    except Exception:
-                        pass
-                    try:
-                        if not sb.is_element_present(audio_button_selector):
-                            print("Audio button still not visible after reload loop; giving control back to caller.")
-                            return False
-                    except Exception:
-                        print("Audio button check failed; giving control back to caller.")
-                        return False
-            try:
-                sb.hover(audio_button_selector)
-            except Exception:
-                pass
-            try:
-                sb.uc_click(audio_button_selector)
-            except Exception:
-                sb.js_click(audio_button_selector)
-            print("Hovered and clicked the audio challenge button.")
-
-            sb.sleep(random.uniform(1.5, 2.5))
-
-            # Try multiple selectors for the Buster button; extension may change over time
-            buster_selectors = [
-                ".help-button-holder",  # host with shadow-root (closed)
-                "#help-button-holder",
-                "#solver-button",       # inside shadow root (may not be directly reachable)
-            ]
-
-            found_selector = None
-            # Poll briefly for the button to render; search current frame, then all frames
-            for _ in range(30):  # ~15 seconds total
-                # Check current context first
-                for sel in buster_selectors:
-                    try:
-                        if sb.is_element_present(sel):
-                            found_selector = sel
-                            break
-                    except Exception:
-                        continue
-                if found_selector:
-                    break
-
-                # Search other iframes
-                try:
-                    sb.switch_to_default_content()
-                    frames2 = sb.find_elements('css selector', 'iframe')
-                except Exception:
-                    frames2 = []
-                for fr2 in frames2:
-                    try:
-                        sb.switch_to_frame(fr2)
-                        for sel in buster_selectors:
-                            try:
-                                if sb.is_element_present(sel):
-                                    found_selector = sel
-                                    break
-                            except Exception:
-                                continue
-                        if found_selector:
-                            break
-                        sb.switch_to_default_content()
-                    except Exception:
-                        try:
-                            sb.switch_to_default_content()
-                        except Exception:
-                            pass
-                if found_selector:
-                    break
-                sb.sleep(0.5)
-
-            if found_selector:
-                print("Buster UI found (selector):", found_selector)
-                # Ensure the host is in view
-                try:
-                    el = sb.find_element("css selector", found_selector)
-                    sb.driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", el)
-                except Exception:
-                    el = None
-                sb.sleep(0.3)
-
-                # Try multiple click strategies, prioritizing GUI and coordinate clicks
-                clicked = False
-                for click_try in ("cdp_gui", "coords_abs", "coords", "cdp", "normal", "js"):
-                    try:
-                        if click_try == "cdp_gui":
-                            sb.cdp.gui_click_element(found_selector)
-                        elif click_try == "coords_abs":
-                            # Compute absolute viewport coordinates: frame offset + host offset
-                            try:
-                                # Get frame rect from default content
-                                try:
-                                    sb.switch_to_default_content()
-                                except Exception:
-                                    pass
-                                frame_rect = sb.driver.execute_script(
-                                    "var r = arguments[0].getBoundingClientRect(); return {left:r.left, top:r.top};",
-                                    challenge_iframe_element,
-                                )
-                                # Back into frame to get host rect
-                                sb.switch_to_frame(challenge_iframe_element)
-                                if el is None:
-                                    el = sb.find_element("css selector", found_selector)
-                                host_rect = sb.driver.execute_script(
-                                    "var r = arguments[0].getBoundingClientRect(); return {left:r.left, top:r.top, width:r.width, height:r.height};",
-                                    el,
-                                )
-                                abs_x = int(frame_rect.get('left', 0) + host_rect.get('left', 0) + host_rect.get('width', 0)/2)
-                                abs_y = int(frame_rect.get('top', 0) + host_rect.get('top', 0) + host_rect.get('height', 0)/2)
-                                # Perform 2-3 clicks with slight jitter at absolute coords
-                                try:
-                                    sb.switch_to_default_content()
-                                except Exception:
-                                    pass
-                                for dx, dy in ((0,0), (1,1), (-1,-1)):
-                                    sb.cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": abs_x+dx, "y": abs_y+dy, "button": "left", "clickCount": 1})
-                                    sb.cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": abs_x+dx, "y": abs_y+dy, "button": "left", "clickCount": 1})
-                                    sb.sleep(0.15)
-                                # Return to frame context for subsequent steps
-                                try:
-                                    sb.switch_to_frame(challenge_iframe_element)
-                                except Exception:
-                                    pass
-                            except Exception:
-                                # If absolute calc fails, fall back to next strategy
-                                pass
-                        elif click_try == "coords":
-                            if el is None:
-                                el = sb.find_element("css selector", found_selector)
-                            # Use viewport coordinates from boundingClientRect
-                            rect = sb.driver.execute_script("var r = arguments[0].getBoundingClientRect(); return {x: r.left + r.width/2, y: r.top + r.height/2, left:r.left, top:r.top, width:r.width, height:r.height};", el)
-                            cx, cy = int(rect.get('x', 0)), int(rect.get('y', 0))
-                            # Try a few jittered clicks
-                            for dx, dy in ((0,0), (2,2), (-2,-2)):
-                                sb.cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": cx+dx, "y": cy+dy, "button": "left", "clickCount": 1})
-                                sb.cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": cx+dx, "y": cy+dy, "button": "left", "clickCount": 1})
-                                sb.sleep(0.2)
-                        elif click_try == "cdp":
-                            sb.cdp.click(found_selector)
-                        elif click_try == "normal":
-                            sb.click(found_selector)
-                        else:
-                            sb.js_click(found_selector)
-                        clicked = True
-                        print("Clicked Buster via:", click_try)
-                        # small wait after click to allow UI to respond
-                        try:
-                            ts_after = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                            after_click_shot = os.path.join(SCREENSHOTS_DIR, f"captcha_after_click_{click_try}_{ts_after}.png")
-                            sb.save_screenshot(after_click_shot)
-                            print(f"Saved captcha after-click screenshot: {after_click_shot}")
-                        except Exception:
-                            pass
-                        
-                        sb.sleep(1.0)
-                        break
-                    except Exception:
-                        continue
-                if not clicked:
-                    print("Falling back to Buster hotkey (ALT+SHIFT+B)")
-                    try:
-                        sb.press_keys("body", "ALT+SHIFT+B")
-                    except Exception:
-                        try:
-                            sb.cdp.press_keys("body", "ALT+SHIFT+B")
-                        except Exception:
-                            pass
-            else:
-                print("Buster UI not found. Trying hotkeys as fallback...")
-                for keys in ("ALT+SHIFT+B", "ALT+B", "CTRL+B"):
-                    try:
-                        sb.press_keys("body", keys)
-                        sb.sleep(1.0)
-                        break
-                    except Exception:
-                        try:
-                            sb.cdp.press_keys("body", keys)
-                            sb.sleep(1.0)
-                            break
-                        except Exception:
-                            continue
-
-            # Return to default content and wait for the challenge iframe to disappear
-            sb.switch_to_default_content()
-            print("Waiting for Buster to solve the audio challenge...")
-            try:
-                ts_wait = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_wait_{ts_wait}.png"))
-            except Exception:
-                pass
-
-            # Short wait for solve; if not solved, try reloading the challenge and retry up to 3 attempts
-            try:
-                WebDriverWait(sb.driver, 40).until(
-                    EC.invisibility_of_element_located((By.CSS_SELECTOR, 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'))
-                )
-                print("CAPTCHA solved successfully! The challenge has disappeared.")
-                # Verify the anchor shows a checked state; if not, reload and retry
-                anchor_ok = False
-                try:
-                    sb.switch_to_default_content()
-                    anchor_iframe_selector = 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]'
-                    if sb.is_element_present(anchor_iframe_selector):
-                        ai = sb.find_element("css selector", anchor_iframe_selector)
-                        sb.switch_to_frame(ai)
-                        if sb.is_element_present('#recaptcha-anchor'):
-                            try:
-                                chk = sb.get_attribute('#recaptcha-anchor', 'aria-checked') or ''
-                            except Exception:
-                                chk = ''
-                            try:
-                                cls = sb.get_attribute('#recaptcha-anchor', 'class') or ''
-                            except Exception:
-                                cls = ''
-                            anchor_ok = (str(chk).lower() == 'true') or ('recaptcha-checkbox-checked' in cls)
-                        sb.switch_to_default_content()
-                except Exception:
-                    pass
-                if not anchor_ok:
-                    print("Anchor not verified after solve; reloading challenge and retrying...")
-                    try:
-                        # Try clicking reload in any challenge frame
-                        cf = None
-                        try:
-                            frames = sb.find_elements('css selector', 'iframe')
-                        except Exception:
-                            frames = []
-                        for fr in frames:
-                            try:
-                                sb.switch_to_frame(fr)
-                                if sb.is_element_present('#recaptcha-reload-button') or sb.is_element_present('.rc-button-reload'):
-                                    cf = fr
-                                    break
-                                sb.switch_to_default_content()
-                            except Exception:
-                                try:
-                                    sb.switch_to_default_content()
-                                except Exception:
-                                    pass
-                        if cf is not None:
-                            for sel in ('#recaptcha-reload-button', '.rc-button-reload'):
-                                try:
-                                    if sb.is_element_present(sel):
-                                        try:
-                                            sb.cdp.click(sel)
-                                        except Exception:
-                                            try:
-                                                sb.js_click(sel)
-                                            except Exception:
-                                                sb.click(sel)
-                                        break
-                                except Exception:
-                                    continue
-                            try:
-                                sb.switch_to_default_content()
-                            except Exception:
-                                pass
-                        else:
-                            # If no reload located, click the anchor to reopen challenge
-                            try:
-                                sb.switch_to_default_content()
-                                if sb.is_element_present('iframe[title="reCAPTCHA"], iframe[src*="anchor"]'):
-                                    ai = sb.find_element('css selector', 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]')
-                                    sb.switch_to_frame(ai)
-                                    if sb.is_element_present('#recaptcha-anchor'):
-                                        try:
-                                            sb.click('#recaptcha-anchor')
-                                        except Exception:
-                                            sb.js_click('#recaptcha-anchor')
-                                    sb.switch_to_default_content()
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                    return solve_captcha_with_buster(sb, attempt=attempt+1)
-                try:
-                    ts_solved = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_solved_{ts_solved}.png"))
-                except Exception:
-                    pass
-                return True
-            except Exception:
-                print("Challenge iframe still present after waiting.")
-                if attempt >= 3:
-                    print("Max CAPTCHA attempts reached.")
-                    return False
-
-                print(f"Attempting CAPTCHA reload (attempt {attempt+1})...")
-                # Try to click the reload button inside the challenge frame, then recurse
-                try:
-                    # Use the same reload loop helper when stalled
-                    def _click_reload_once() -> bool:
-                        clicked_local = False
-                        try:
-                            for sel in (
-                                '#recaptcha-reload-button',
-                                'button#recaptcha-reload-button',
-                                '.rc-button-reload',
-                                '.rc-doscaptcha-reload',
-                                '.rc-doscaptcha [role="button"]',
-                                '.rc-button[role="button"]',
-                                '.rc-button',
-                                'div[role="button"]'
-                            ):
-                                try:
-                                    if sb.is_element_present(sel):
-                                        try:
-                                            sb.cdp.click(sel)
-                                        except Exception:
-                                            try:
-                                                sb.js_click(sel)
-                                            except Exception:
-                                                sb.click(sel)
-                                        clicked_local = True
-                                        break
-                                except Exception:
-                                    continue
-                            if not clicked_local:
-                                try:
-                                    sb.switch_to_default_content()
-                                except Exception:
-                                    pass
-                                try:
-                                    frames3 = sb.find_elements('css selector', 'iframe')
-                                except Exception:
-                                    frames3 = []
-                                for fr3 in frames3:
-                                    try:
-                                        sb.switch_to_frame(fr3)
-                                        for sel in (
-                                            '#recaptcha-reload-button',
-                                            'button#recaptcha-reload-button',
-                                            '.rc-button-reload',
-                                            '.rc-doscaptcha-reload',
-                                            '.rc-doscaptcha [role="button"]',
-                                            '.rc-button[role="button"]',
-                                            '.rc-button',
-                                            'div[role="button"]'
-                                        ):
-                                            try:
-                                                if sb.is_element_present(sel):
-                                                    try:
-                                                        sb.cdp.click(sel)
-                                                    except Exception:
-                                                        try:
-                                                            sb.js_click(sel)
-                                                        except Exception:
-                                                            sb.click(sel)
-                                                    clicked_local = True
-                                                    break
-                                            except Exception:
-                                                continue
-                                        if clicked_local:
-                                            break
-                                        sb.switch_to_default_content()
-                                    except Exception:
-                                        try:
-                                            sb.switch_to_default_content()
-                                        except Exception:
-                                            pass
-                            if not clicked_local:
-                                # Try reopen the anchor checkbox to re-trigger
-                                try:
-                                    sb.switch_to_default_content()
-                                except Exception:
-                                    pass
-                                try:
-                                    anchor_iframe_selector2 = 'iframe[title="reCAPTCHA"], iframe[src*="anchor"]'
-                                    if sb.is_element_present(anchor_iframe_selector2):
-                                        aif = sb.find_element('css selector', anchor_iframe_selector2)
-                                        sb.switch_to_frame(aif)
-                                        if sb.is_element_present('#recaptcha-anchor'):
-                                            try:
-                                                sb.cdp.click('#recaptcha-anchor')
-                                            except Exception:
-                                                try:
-                                                    sb.js_click('#recaptcha-anchor')
-                                                except Exception:
-                                                    sb.click('#recaptcha-anchor')
-                                            clicked_local = True
-                                except Exception:
-                                    pass
-                            if not clicked_local:
-                                # Try the reset button when DoS overlay is active
-                                try:
-                                    try:
-                                        sb.switch_to_default_content()
-                                    except Exception:
-                                        pass
-                                    frames_reset = []
-                                    try:
-                                        frames_reset = sb.find_elements('css selector', 'iframe')
-                                    except Exception:
-                                        frames_reset = []
-                                    for frx in frames_reset:
-                                        try:
-                                            sb.switch_to_frame(frx)
-                                            if sb.is_element_present('#reset-button'):
-                                                try:
-                                                    sb.cdp.click('#reset-button')
-                                                except Exception:
-                                                    try:
-                                                        sb.js_click('#reset-button')
-                                                    except Exception:
-                                                        sb.click('#reset-button')
-                                                print("Clicked reCAPTCHA reset button inside challenge frame (stalled flow).")
-                                                clicked_local = True
-                                                break
-                                            sb.switch_to_default_content()
-                                        except Exception:
-                                            try:
-                                                sb.switch_to_default_content()
-                                            except Exception:
-                                                pass
-                                except Exception:
-                                    pass
-                            if not clicked_local:
-                                # Click center of DOS overlay if present
-                                try:
-                                    for overlay_sel in ('.rc-doscaptcha', '.rc-doscaptcha-body', '.rc-anchor-error-msg-container'):
-                                        try:
-                                            if sb.is_element_present(overlay_sel):
-                                                el = sb.find_element('css selector', overlay_sel)
-                                                rect = sb.driver.execute_script('var r = arguments[0].getBoundingClientRect(); return {x:r.left + r.width/2, y:r.top + r.height/2};', el)
-                                                cx, cy = int(rect.get('x', 0)), int(rect.get('y', 0))
-                                                sb.cdp.send('Input.dispatchMouseEvent', {"type":"mousePressed","x":cx,"y":cy,"button":"left","clickCount":1})
-                                                sb.cdp.send('Input.dispatchMouseEvent', {"type":"mouseReleased","x":cx,"y":cy,"button":"left","clickCount":1})
-                                                clicked_local = True
-                                                break
-                                        except Exception:
-                                            continue
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
-                        try:
-                            sb.switch_to_default_content()
-                        except Exception:
-                            pass
-                        return clicked_local
-
-                    clicks = 0
-                    while clicks < CAPTCHA_MAX_RELOAD_CLICKS:
-                        did = _click_reload_once()
-                        clicks += 1 if did else 0
-                        sb.sleep(1.0)
-                        # If the challenge disappears, break and re-run solver
-                        try:
-                            gone = EC.invisibility_of_element_located((By.CSS_SELECTOR, 'iframe[title*="recaptcha challenge"], iframe[src*="bframe"], iframe[src*="recaptcha"], iframe[name^="c-"]'))(sb.driver)
-                        except Exception:
-                            gone = False
-                        if gone:
-                            break
-                    # Re-find a challenge frame to enter
-                    cf = None
-                    try:
-                        frames = sb.find_elements('css selector', 'iframe')
-                    except Exception:
-                        frames = []
-                    for fr in frames:
-                        try:
-                            sb.switch_to_frame(fr)
-                            if sb.is_element_present('#recaptcha-reload-button') or sb.is_element_present('.rc-button-reload'):
-                                cf = fr
-                                break
-                            sb.switch_to_default_content()
-                        except Exception:
-                            try:
-                                sb.switch_to_default_content()
-                            except Exception:
-                                pass
-                    if cf is None:
-                        # Fall back to the earlier located iframe if still attached
-                        try:
-                            sb.switch_to_frame(challenge_iframe_element)
-                        except Exception:
-                            pass
-                    # Click reload
-                    reload_selectors = ['#recaptcha-reload-button', 'button#recaptcha-reload-button', '.rc-button-reload']
-                    reloaded = False
-                    for sel in reload_selectors:
-                        try:
-                            if sb.is_element_present(sel):
-                                try:
-                                    sb.cdp.click(sel)
-                                except Exception:
-                                    try:
-                                        sb.js_click(sel)
-                                    except Exception:
-                                        sb.click(sel)
-                                reloaded = True
-                                break
-                        except Exception:
-                            continue
-                    # Capture after-reload screenshot
-                    try:
-                        ts_rel = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                        sb.save_screenshot(os.path.join(SCREENSHOTS_DIR, f"captcha_after_reload_{ts_rel}.png"))
-                    except Exception:
-                        pass
-                    # Leave frame and retry solver flow recursively
-                    try:
-                        sb.switch_to_default_content()
-                    except Exception:
-                        pass
-                    if not reloaded:
-                        print("Reload button not found; retrying solver anyway.")
-                    return solve_captcha_with_buster(sb, attempt=attempt+1)
-                except Exception as _r:
-                    print("Reload process failed:", _r)
-                    try:
-                        sb.switch_to_default_content()
-                    except Exception:
-                        pass
-                    return False
-        except (TimeoutException, NoSuchFrameException):
-            print("CAPTCHA challenge did not appear as expected or an element was not found.")
-            print("Assuming no CAPTCHA was needed or it was solved by other means.")
-            try:
-                sb.switch_to_default_content()
-            except Exception:
-                pass
-            return False
+                    _add_cookies_for_host(sb, host, prepared)
+                except Exception as e:
+                    print("Cookie priming on host failed:", host, e)
+            if prepared:
+                cookies_loaded_successfully = True
+                print(f"Loaded {len(prepared)} cookies from session file.")
         except Exception as e:
-            print(f"An unexpected error occurred during CAPTCHA solving: {e}")
-            try:
-                sb.switch_to_default_content()
-            except Exception:
-                pass
-            return False
+            print("Failed loading cookies from file:", e)
 
-    # 1) Try in-memory env cookies (useful for Railway secret injection)
-    if SESSION_COOKIES_JSON:
-        print("Attempting to load session from SESSION_COOKIES_JSON...")
-        cookies_loaded_successfully = False
+    if (not cookies_loaded_successfully) and SESSION_COOKIES_JSON:
+        print("Seeding session from SESSION_COOKIES_JSON (one-time) because no file was usable...")
         try:
             sb.get("https://www.sahibinden.com/")
             _accept_cookie_banner_if_any()
             cookies_raw = json.loads(SESSION_COOKIES_JSON)
             prepared = _prepare_cookies(cookies_raw)
-            # Prime cookies on relevant hosts
-            hosts = [
+            for host in (
                 "https://www.sahibinden.com/",
                 "https://secure.sahibinden.com/",
                 "https://secure2.sahibinden.com/",
-            ]
-            for host in hosts:
+            ):
                 try:
                     _add_cookies_for_host(sb, host, prepared)
                 except Exception as e:
                     print("Cookie priming on host failed:", host, e)
-            loaded_count = len(prepared)
-            if loaded_count > 0:
-                print(f"Loaded {loaded_count} cookies from env variable.")
+            if prepared:
                 cookies_loaded_successfully = True
-            print("Navigating to target URL with session...")
-            sb.get(url)
-            _accept_cookie_banner_if_any()
-            time.sleep(2)
+                # Persist immediately so future cycles use the file
+                try:
+                    with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+                        json.dump(sb.get_cookies(), f)
+                    print(f"Seeded and saved cookies to {SESSION_COOKIE_FILE}")
+                except Exception as e:
+                    print("Failed to persist seeded cookies:", e)
         except Exception as e:
-            print(f"A critical error occurred during cookie loading: {e}. Falling back to standard login.")
-            sb.uc_open_with_reconnect(url, 4)
-            _accept_cookie_banner_if_any()
-        if not cookies_loaded_successfully:
-            sb.uc_open_with_reconnect(url, 4)
-            _accept_cookie_banner_if_any()
-    else:
-        # 2) Try persistent session file from data volume
-        cookies_loaded_successfully = False
-        if os.path.exists(SESSION_COOKIE_FILE):
-            print(f"Attempting to load session from file: {SESSION_COOKIE_FILE}")
-            try:
-                with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as f:
-                    file_cookies = json.load(f)
-                prepared = _prepare_cookies(file_cookies)
-                sb.get("https://www.sahibinden.com/")
-                _accept_cookie_banner_if_any()
-                for host in ("https://www.sahibinden.com/", "https://secure.sahibinden.com/", "https://secure2.sahibinden.com/"):
-                    try:
-                        _add_cookies_for_host(sb, host, prepared)
-                    except Exception as e:
-                        print("Cookie priming on host failed:", host, e)
-                if prepared:
-                    cookies_loaded_successfully = True
-                    print(f"Loaded {len(prepared)} cookies from session file.")
-                    sb.get(url)
-                    _accept_cookie_banner_if_any()
-                    time.sleep(1)
-            except Exception as e:
-                print("Failed loading cookies from file:", e)
+            print("Seeding from env cookies failed:", e)
 
-        if not cookies_loaded_successfully:
-            sb.uc_open_with_reconnect(url, 4)
-            _accept_cookie_banner_if_any()
+    if not cookies_loaded_successfully:
+        print("No usable session cookies found. Login required.")
+        raise NeedsLogin("No valid cookies on disk or env seed")
+
+    # Navigate to target using the loaded/seeded session
+    try:
+        sb.get(url)
+        _accept_cookie_banner_if_any()
+        time.sleep(1)
+    except Exception as e:
+        print("Navigation with session failed:", e)
 
     if _is_on_login():
-        print("Redirected to login page. Attempting robust login...")
-        now = time.time()
-        if meta["attempts"] >= MAX_LOGIN_ATTEMPTS:
-            print("Max login attempts reached; backing off.")
-            return set(), []
-        if meta["attempts"] > 0 and now - meta["last"] < LOGIN_COOLDOWN_SEC:
-            wait_left = int(LOGIN_COOLDOWN_SEC - (now - meta["last"]))
-            print(f"Login cooldown active ({wait_left}s left); skipping.")
-            return set(), []
-        meta["attempts"] += 1
-        meta["last"] = now
-        try:
-            print("Activating CDP Mode for stealthy login...")
-            sb.activate_cdp_mode()
-            # Capture immediate screenshot and HTML snapshot for diagnostics
-            try:
-                ts0 = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                pre_login_shot = os.path.join(SCREENSHOTS_DIR, f"login_page_{ts0}.png")
-                sb.save_screenshot(pre_login_shot)
-                try:
-                    html_source = sb.get_page_source()
-                except Exception:
-                    try:
-                        html_source = sb.driver.page_source
-                    except Exception:
-                        html_source = ""
-                if html_source:
-                    pre_login_html = os.path.join(HTML_SNAPSHOTS_DIR, f"login_page_{ts0}.html")
-                    with open(pre_login_html, 'w', encoding='utf-8') as f:
-                        f.write(html_source)
-                print(f"Saved login page screenshot: {pre_login_shot}")
-            except Exception as _e:
-                print(f"Failed to capture early login snapshots: {_e}")
+        print("Redirected to login page due to expired/missing cookies. Login required.")
+        raise NeedsLogin("Cookies expired")
 
-            # In case an extension opened a new tab, switch to last tab and ensure page is ready
-            try:
-                handles = sb.driver.window_handles
-                if handles:
-                    sb.driver.switch_to.window(handles[-1])
-                    try:
-                        print("Switched to tab:", sb.get_current_url())
-                    except Exception:
-                        pass
-            except Exception as _e:
-                print("Window handle switch failed:", _e)
-
-            try:
-                sb.wait_for_ready_state_complete()
-            except Exception:
-                pass
-
-            # If the page appears blank or fields missing, navigate directly to known login URLs
-            try:
-                page_source_len = len((sb.driver.page_source or "").strip())
-            except Exception:
-                page_source_len = 0
-            if page_source_len < 300 or not sb.is_element_present("#username"):
-                LOGIN_URLS = [
-                    "https://secure2.sahibinden.com/giris",
-                    "https://secure.sahibinden.com/giris",
-                    "https://www.sahibinden.com/giris",
-                ]
-                for login_url in LOGIN_URLS:
-                    try:
-                        print("Navigating directly to login URL:", login_url)
-                        sb.uc_open_with_reconnect(login_url, 4)
-                        _accept_cookie_banner_if_any()
-                        sb.wait_for_ready_state_complete()
-                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                            break
-                        sb.sleep(1.0)
-                    except Exception as _e:
-                        print("Login URL attempt failed:", _e)
-
-                # Save another snapshot after navigation attempts
-                try:
-                    ts1 = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    post_nav_shot = os.path.join(SCREENSHOTS_DIR, f"login_page_after_nav_{ts1}.png")
-                    sb.save_screenshot(post_nav_shot)
-                    html_source2 = ""
-                    try:
-                        html_source2 = sb.get_page_source()
-                    except Exception:
-                        try:
-                            html_source2 = sb.driver.page_source
-                        except Exception:
-                            html_source2 = ""
-                    if html_source2:
-                        post_nav_html = os.path.join(HTML_SNAPSHOTS_DIR, f"login_page_after_nav_{ts1}.html")
-                        with open(post_nav_html, 'w', encoding='utf-8') as f:
-                            f.write(html_source2)
-                    print(f"Saved post-navigation login page screenshot: {post_nav_shot}")
-                except Exception as _e:
-                    print("Failed to capture post-navigation snapshots:", _e)
-            # Ensure consent overlays don't block fields on the login page
-            _accept_cookie_banner_if_any()
-            # Wait for fields to be visible
-            try:
-                sb.wait_for_element_visible("#username", timeout=20)
-                sb.wait_for_element_visible("#password", timeout=20)
-            except Exception:
-                # Give the page a moment and try once more
-                sb.sleep(1.5)
-                sb.wait_for_element_visible("#username", timeout=10)
-                sb.wait_for_element_visible("#password", timeout=10)
-            print("Typing username using CDP...")
-            try:
-                sb.cdp.click("#username")
-            except Exception:
-                pass
-            try:
-                sb.cdp.press_keys("#username", SAHIBINDEN_USER)
-            except Exception:
-                sb.type("#username", SAHIBINDEN_USER)
-            sb.sleep(random.uniform(0.5, 1.0))
-            print("Typing password using CDP...")
-            try:
-                sb.cdp.click("#password")
-            except Exception:
-                pass
-            try:
-                sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
-            except Exception:
-                sb.type("#password", SAHIBINDEN_PASS)
-            sb.sleep(random.uniform(0.5, 1.0))
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"before_login_click_{timestamp}.png")
-            sb.save_screenshot(screenshot_path)
-            print(f"Saved screenshot before login click to: {screenshot_path}")
-            print("Clicking login button using CDP...")
-            clicked_login = False
-            # Try visible submit elements first
-            for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
-                try:
-                    if sb.is_element_visible(sel):
-                        sb.cdp.click(sel)
-                        clicked_login = True
-                        break
-                except Exception:
-                    continue
-            if not clicked_login:
-                # Try regular click
-                for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
-                    try:
-                        if sb.is_element_present(sel):
-                            sb.click(sel)
-                            clicked_login = True
-                            break
-                    except Exception:
-                        continue
-            if not clicked_login:
-                try:
-                    sb.cdp.press_keys("#password", "\n")
-                    clicked_login = True
-                except Exception:
-                    try:
-                        sb.press_keys("#password", "\n")
-                    except Exception:
-                        pass
-            print("Waiting for page to react after login click...")
-            sb.sleep(5)
-            # Try solving captcha, but don't fail the whole flow if Buster UI isn't present
-            try:
-                solved = solve_captcha_with_buster(sb)
-            except Exception as _e:
-                print("Captcha solver raised:", _e)
-            sb.sleep(3)
-            # If solver exited early without solving (returned False), press submit again directly.
-            try:
-                if _is_on_login():
-                    for _ in range(max(1, LOGIN_RECLICK_RETRIES)):
-                        pressed = False
-                        for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
-                            try:
-                                if sb.is_element_present(sel):
-                                    try:
-                                        sb.cdp.click(sel)
-                                    except Exception:
-                                        try:
-                                            sb.js_click(sel)
-                                        except Exception:
-                                            sb.click(sel)
-                                    pressed = True
-                                    break
-                            except Exception:
-                                continue
-                        if not pressed:
-                            try:
-                                sb.cdp.press_keys("#password", "\n")
-                            except Exception:
-                                try:
-                                    sb.press_keys("#password", "\n")
-                                except Exception:
-                                    pass
-                        sb.sleep(max(1, LOGIN_RECLICK_WAIT_SEC))
-                        if not _is_on_login():
-                            break
-            except Exception:
-                pass
-            # If we are still on the login page with no visible challenge, re-click submit a few times.
-            if _is_on_login():
-                for _ in range(max(1, LOGIN_RECLICK_RETRIES)):
-                    reclicked = False
-                    for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
-                        try:
-                            if sb.is_element_present(sel):
-                                try:
-                                    sb.cdp.click(sel)
-                                except Exception:
-                                    try:
-                                        sb.js_click(sel)
-                                    except Exception:
-                                        sb.click(sel)
-                                reclicked = True
-                                break
-                        except Exception:
-                            continue
-                    if not reclicked:
-                        try:
-                            sb.cdp.press_keys("#password", "\n")
-                        except Exception:
-                            try:
-                                sb.press_keys("#password", "\n")
-                            except Exception:
-                                pass
-                    sb.sleep(max(1, LOGIN_RECLICK_WAIT_SEC))
-                    # Exit early if we left login page
-                    if not _is_on_login():
-                        break
-
-            if _is_on_login():
-                print("Login failed, still on login page after CAPTCHA attempt.")
-                try:
-                    ts_fail = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_failed_{ts_fail}.png")
-                    sb.save_screenshot(screenshot_path)
-                    print(f"Saved screenshot on failure: {screenshot_path}")
-                except Exception:
-                    pass
-                return set(), []
-            else:
-                print("Login successful!")
-                _save_current_cookies()
-                # Ensure we are back on the target listing page before scraping
-                try:
-                    sb.switch_to_default_content()
-                except Exception:
-                    pass
-                try:
-                    print("Navigating back to target listing after login...")
-                    sb.uc_open_with_reconnect(url, 4)
-                except Exception:
-                    sb.get(url)
-                _accept_cookie_banner_if_any()
-                try:
-                    sb.wait_for_ready_state_complete()
-                except Exception:
-                    pass
-                # Small wait to let any session propagation occur before scraping
-                sb.sleep(2)
-                try:
-                    ts_after_login = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    after_login_shot = os.path.join(SCREENSHOTS_DIR, f"after_login_nav_{ts_after_login}.png")
-                    sb.save_screenshot(after_login_shot)
-                    print(f"Saved screenshot after login navigation: {after_login_shot}")
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"An exception occurred during the CDP login process: {e}")
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            screenshot_path = os.path.join(SCREENSHOTS_DIR, f"login_error_{timestamp}.png")
-            sb.save_screenshot(screenshot_path)
-            return set(), []
+    # Save any updated cookies back to disk to keep the latest session
+    try:
+        _save_current_cookies()
+    except Exception:
+        pass
 
     print("Proceeding to scrape data...")
     try:
@@ -1658,35 +684,82 @@ def _scrape_loop(poll_seconds: int = 60):
                 continue
 
             for flt in items:
-                proxy_string = os.getenv("PROXY_STRING")
-                if not proxy_string:
-                    print("WARNING: PROXY_STRING not set. Running without a proxy.")
-                
+                fid = flt['id']
+                url = flt['url']
+                with STATE_LOCK: known = KNOWN_IDS.setdefault(fid, set())
+
+                need_login = False
+                current_ids, new_posts = set(), []
+
+                # 1) Try scraping WITHOUT proxy using existing cookies
                 try:
-                    # CORRECTED: Removed invalid 'no_sandbox' and 'disable_gpu' arguments
                     with SB(
                         uc=True,
-                        headless=False,  # Must be False for xvfb and GUI actions
-                        xvfb=True,       # Use virtual display on server
-                        agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                               "AppleWebKit/537.36 (KHTML, like Gecko) "
-                               "Chrome/120.0.0.0 Safari/537.36"),
+                        headless=False,
+                        xvfb=True,
+                        agent=(
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/120.0.0.0 Safari/537.36"
+                        ),
                         locale_code="tr-TR",
                         window_size="1366,768",
-                        proxy=proxy_string if proxy_string else None,
-                        extension_dir="buster_chrome"
+                        proxy=None,
                     ) as sb:
+                        try:
                         sb.driver.execute_cdp_cmd(
                             "Page.addScriptToEvaluateOnNewDocument",
                             {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
                         )
+                        except Exception:
+                            pass
+                        try:
+                            current_ids, new_posts = scrape_sahibinden(sb, url, known)
+                        except NeedsLogin:
+                            print("Cookie invalid; will refresh via proxy login.")
+                            need_login = True
+                        except Exception as e:
+                            print("Scrape attempt failed:", e)
+                except Exception as e:
+                    print("Non-proxy browser session failed:", e)
 
-                        fid = flt['id']
-                        url = flt['url']
-                        with STATE_LOCK: known = KNOWN_IDS.setdefault(fid, set())
+                # 2) If login needed, perform proxy-backed login and retry scraping without proxy
+                if need_login:
+                    success = login_with_proxy_and_save_cookies(url)
+                    if not success:
+                        print("Proxy login failed; skipping this filter this cycle.")
+                        continue
+                    # Retry scraping without proxy using the refreshed cookies
+                    try:
+                        with SB(
+                            uc=True,
+                            headless=False,
+                            xvfb=True,
+                            agent=(
+                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/120.0.0.0 Safari/537.36"
+                            ),
+                            locale_code="tr-TR",
+                            window_size="1366,768",
+                            proxy=None,
+                        ) as sb:
+                            try:
+                                sb.driver.execute_cdp_cmd(
+                                    "Page.addScriptToEvaluateOnNewDocument",
+                                    {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
+                                )
+                            except Exception:
+                                pass
+                            try:
+                                current_ids, new_posts = scrape_sahibinden(sb, url, known)
+                            except Exception as e:
+                                print("Scrape after login failed:", e)
+                                current_ids, new_posts = set(), []
+                    except Exception as e:
+                        print("Browser session after login failed:", e)
                         
-                        current_ids, new_posts = scrape_sahibinden(sb, url, known)
-                        
+                # 3) Persist results
                         if new_posts:
                             now_iso = datetime.now(timezone.utc).isoformat()
                             for p in new_posts:
@@ -1722,10 +795,7 @@ def _scrape_loop(poll_seconds: int = 60):
                         
                         _save_data_to_disk()
 
-                except Exception as e:
-                    print(f"Error during SB session for {flt.get('url')}: {e}")
-                
-                print("SB session for this run has been closed.")
+                print("SB session(s) for this filter have been closed.")
 
             print(f"Scrape cycle complete. Waiting for {poll_seconds} seconds...")
             time.sleep(poll_seconds)
