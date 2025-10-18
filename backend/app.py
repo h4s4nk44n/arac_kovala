@@ -163,7 +163,33 @@ def build_brightdata_proxy_string(country_code="tr", session_id=None):
         session_id = secrets.token_hex(4)
 
     username = f"{base_user}-country-{country_code}-session-{session_id}"
-    return f"{host}:{port}:{base_user}:{password}"
+    return f"{username}:{password}@{host}:{port}"
+    
+def _get_iproyal_requests_proxies():
+    """
+    Build a requests proxies dict from IPRoyal env vars if present.
+    Expected env:
+      - IPROYAL_PROXY: e.g. 'geo.iproyal.com:12321'
+      - IPROYAL_PROXY_AUTH: e.g. 'username:password_country-tr_city-istanbul_streaming-1'
+    """
+    proxy_host_port = (os.getenv("IPROYAL_PROXY") or "").strip()
+    proxy_auth = (os.getenv("IPROYAL_PROXY_AUTH") or "").strip()
+    if proxy_host_port and proxy_auth:
+        proxy_url = f"http://{proxy_auth}@{proxy_host_port}"
+        return {"http": proxy_url, "https": proxy_url}
+    return None
+
+def _get_selenium_proxy_string():
+    """
+    Return a proxy string suitable for SeleniumBase:
+      - Prefer IPRoyal if IPROYAL_* env vars are set: 'username:password@host:port'
+      - Otherwise fall back to Bright Data if BRD_* env vars are set.
+    """
+    proxy_host_port = (os.getenv("IPROYAL_PROXY") or "").strip()
+    proxy_auth = (os.getenv("IPROYAL_PROXY_AUTH") or "").strip()
+    if proxy_host_port and proxy_auth:
+        return f"{proxy_auth}@{proxy_host_port}"
+    return build_brightdata_proxy_string()
     
 def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     """
@@ -172,9 +198,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     """
     SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
-    proxy_string = build_brightdata_proxy_string()
+    proxy_string = _get_selenium_proxy_string()
     if not proxy_string:
-        print("ERROR: Bright Data proxy env vars (BRD_*) not set. Cannot perform proxy-backed login.")
+        print("ERROR: IPRoyal (IPROYAL_*) or Bright Data (BRD_*) proxy env vars not set. Cannot perform proxy-backed login.")
         return False
 
     if not SAHIBINDEN_USER or not SAHIBINDEN_PASS:
@@ -393,13 +419,15 @@ def send_push_notification(title, body, data={}):
         'Accept-Encoding': 'gzip, deflate',
     }
     
+    proxies = _get_iproyal_requests_proxies()
+
     for token in PUSH_TOKENS:
         payload = {
             'to': token, 'sound': 'default', 'title': title,
             'body': body, 'data': data,
         }
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=10)
+            response = requests.post(url, headers=headers, json=payload, timeout=10, proxies=proxies)
             response.raise_for_status()
             print(f"Successfully sent notification to token starting with: {token[:10]}...")
         except requests.exceptions.RequestException as e:
@@ -446,7 +474,8 @@ def _download_image(image_url, post_id):
 
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        resp = requests.get(image_url, headers=headers, timeout=10)
+        proxies = _get_iproyal_requests_proxies()
+        resp = requests.get(image_url, headers=headers, timeout=10, proxies=proxies)
         if resp.status_code != 200 or not resp.content: return None
         with open(tmp_path, 'wb') as f: f.write(resp.content)
         ext = _guess_extension_from_response(resp, image_url)
