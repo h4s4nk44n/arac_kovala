@@ -622,6 +622,18 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             pass
 
     try:
+        # Force uc_driver to use explicit port to avoid 9222 conflict
+        import subprocess
+        import socket
+        def get_free_port():
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', 0))
+                return s.getsockname()[1]
+        
+        debug_port = get_free_port()
+        chrome_args = _get_chrome_args()
+        chrome_args.append(f"--remote-debugging-port={debug_port}")
+        
         with SB(
             uc=True,
             headless=_is_headless(),
@@ -631,7 +643,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             window_size="1600,900",
             user_data_dir=_get_chrome_profile_dir(),
             proxy=proxy_string,
-            chromium_arg=_get_chrome_args(),
+            chromium_arg=chrome_args,
         ) as sb:
             try:
                 sb.driver.execute_cdp_cmd(
@@ -1275,6 +1287,16 @@ def _scrape_loop(poll_seconds: int = 60):
 
                 # 1) Try scraping WITHOUT proxy using existing cookies
                 try:
+                    import socket
+                    def get_free_port():
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.bind(('127.0.0.1', 0))
+                            return s.getsockname()[1]
+                    
+                    debug_port = get_free_port()
+                    chrome_args = _get_chrome_args()
+                    chrome_args.append(f"--remote-debugging-port={debug_port}")
+                    
                     with SB(
                         uc=True,
                         headless=_is_headless(),
@@ -1284,7 +1306,7 @@ def _scrape_loop(poll_seconds: int = 60):
                         window_size="1600,900",
                         user_data_dir=_get_chrome_profile_dir(),
                         proxy=None,
-                        chromium_arg=_get_chrome_args(),
+                        chromium_arg=chrome_args,
                     ) as sb:
                         try:
                             sb.driver.execute_cdp_cmd(
@@ -1320,6 +1342,16 @@ def _scrape_loop(poll_seconds: int = 60):
                         continue
                     # Retry scraping without proxy using the refreshed cookies
                     try:
+                        import socket
+                        def get_free_port():
+                            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                                s.bind(('127.0.0.1', 0))
+                                return s.getsockname()[1]
+                        
+                        debug_port = get_free_port()
+                        chrome_args = _get_chrome_args()
+                        chrome_args.append(f"--remote-debugging-port={debug_port}")
+                        
                         with SB(
                             uc=True,
                             headless=_is_headless(),
@@ -1329,7 +1361,7 @@ def _scrape_loop(poll_seconds: int = 60):
                             window_size="1600,900",
                             user_data_dir=_get_chrome_profile_dir(),
                             proxy=None,
-                            chromium_arg=_get_chrome_args(),
+                            chromium_arg=chrome_args,
                         ) as sb:
                             try:
                                 sb.driver.execute_cdp_cmd(
