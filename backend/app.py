@@ -1314,6 +1314,8 @@ def _scrape_loop(poll_seconds: int = 60):
                     debug_port = get_free_port()
                     chrome_args = _get_chrome_args()
                     chrome_args.append(f"--remote-debugging-port={debug_port}")
+                    print(f"[Scrape Loop] Starting Chrome with debug port: {debug_port}")
+                    print(f"[Scrape Loop] Final Chrome args: {chrome_args}")
                     
                     with SB(
                         uc=True,
@@ -1350,7 +1352,9 @@ def _scrape_loop(poll_seconds: int = 60):
                         except Exception as e:
                             print("Scrape attempt failed:", e)
                 except Exception as e:
-                    print("Non-proxy browser session failed:", e)
+                    print(f"Non-proxy browser session failed: {e}")
+                    import traceback
+                    traceback.print_exc()
 
                 # 2) If login needed, perform proxy-backed login and retry scraping without proxy
                 if need_login:
