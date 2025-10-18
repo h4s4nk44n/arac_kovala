@@ -596,22 +596,22 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 try:
                     attempt_idx += 1
                     sb.uc_open_with_reconnect(login_url, 4)
-            try:
-                _bypass_turnstile_if_present(sb, 40)
-            except Exception:
-                pass
-            try:
-                _try_uc_gui_click_captcha(sb, 45)
-            except Exception:
-                pass
-            try:
-                _solve_cloudflare_checkbox(sb, 60)
-            except Exception:
-                pass
-            try:
-                _humanize_session(sb, 6)
-            except Exception:
-                pass
+                    try:
+                        _bypass_turnstile_if_present(sb, 40)
+                    except Exception:
+                        pass
+                    try:
+                        _try_uc_gui_click_captcha(sb, 45)
+                    except Exception:
+                        pass
+                    try:
+                        _solve_cloudflare_checkbox(sb, 60)
+                    except Exception:
+                        pass
+                    try:
+                        _humanize_session(sb, 6)
+                    except Exception:
+                        pass
                     _accept_cookie_banner_if_any_local(sb)
                     sb.wait_for_ready_state_complete()
                     if sb.is_element_present("#username") and sb.is_element_present("#password"):
