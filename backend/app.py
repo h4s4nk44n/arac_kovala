@@ -210,6 +210,55 @@ def _bypass_turnstile_if_present(sb, max_wait_seconds: int = 40) -> bool:
 
     return False
 
+def _try_uc_gui_click_captcha(sb, max_wait_seconds: int = 60) -> bool:
+    """
+    Prefer SeleniumBase's GUI captcha clicker when available.
+    Attempts to click any visible Cloudflare/Turnstile checkbox using GUI actions.
+    Returns True if invoked and the challenge appears cleared; False otherwise.
+    """
+    # Quick presence probe
+    def _challenge_present() -> bool:
+        try:
+            if sb.is_element_present('#btn-continue'):
+                return True
+        except Exception:
+            pass
+        try:
+            ifr = sb.find_elements('css selector', 'iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], iframe[title*="Cloudflare" i]')
+            return bool(ifr)
+        except Exception:
+            return False
+
+    def _cleared() -> bool:
+        try:
+            html = (sb.get_page_source() or '').lower()
+        except Exception:
+            html = ''
+        still = _challenge_present()
+        return (not still) and ('gerçek kişi olduğunuzu doğrulayın' not in html)
+
+    if not _challenge_present():
+        return False
+
+    start = time.time()
+    tried = False
+    while time.time() - start < max_wait_seconds:
+        if _cleared():
+            return tried
+        try:
+            tried = True
+            # Built-in SeleniumBase helper (GUI-based)
+            sb.uc_gui_click_captcha()
+        except Exception:
+            pass
+        try:
+            sb.sleep(1.5)
+        except Exception:
+            pass
+        if _cleared():
+            return True
+    return False
+
 def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
     """
     Handle Cloudflare "I'm human" checkbox challenges embedded in an iframe.
@@ -398,6 +447,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     except Exception:
                         pass
                     try:
+                        _try_uc_gui_click_captcha(sb, 45)
+                    except Exception:
+                        pass
+                    try:
                         _solve_cloudflare_checkbox(sb, 60)
                     except Exception:
                         pass
@@ -459,6 +512,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             except Exception:
                 pass
             try:
+                _try_uc_gui_click_captcha(sb, 30)
+            except Exception:
+                pass
+            try:
                 _solve_cloudflare_checkbox(sb, 60)
             except Exception:
                 pass
@@ -509,6 +566,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             sb.sleep(3)
             try:
                 _bypass_turnstile_if_present(sb, 20)
+            except Exception:
+                pass
+            try:
+                _try_uc_gui_click_captcha(sb, 30)
             except Exception:
                 pass
             try:
@@ -564,6 +625,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     pass
             try:
                 _bypass_turnstile_if_present(sb, 20)
+            except Exception:
+                pass
+            try:
+                _try_uc_gui_click_captcha(sb, 30)
             except Exception:
                 pass
             try:
@@ -774,6 +839,10 @@ def scrape_sahibinden(sb, url, known_posts):
         sb.get(url)
         try:
             _bypass_turnstile_if_present(sb, 30)
+        except Exception:
+            pass
+        try:
+            _try_uc_gui_click_captcha(sb, 30)
         except Exception:
             pass
         try:
