@@ -1707,38 +1707,108 @@ def serve_screenshot(filename):
 
 
 # --- MODIFIED: Use a single bootstrap function ---
+def _test_cookies_validity() -> bool:
+    """
+    Quick test to check if existing cookies are valid (not rate-limited).
+    Returns True if cookies work, False if rate-limited or invalid.
+    """
+    try:
+        print("Testing existing cookies validity...")
+        with SB(
+            uc=False,
+            headless=True,  # Quick headless test
+            xvfb=True,
+            agent=_realistic_user_agent(),
+            locale_code="tr-TR",
+            window_size="1600,900",
+            chromium_arg=",".join(_get_chrome_args()),
+        ) as sb:
+            # Load cookies
+            if os.path.exists(SESSION_COOKIE_FILE):
+                sb.get("https://www.sahibinden.com")
+                with open(SESSION_COOKIE_FILE, 'r') as f:
+                    cookies = json.load(f)
+                for c in cookies:
+                    try:
+                        sb.driver.add_cookie(c)
+                    except Exception:
+                        pass
+            
+            # Test navigation to a search page
+            sb.get("https://www.sahibinden.com/audi-a6?sorting=date_desc")
+            sb.sleep(2)
+            
+            # Check for rate-limit page
+            page_text = sb.get_page_source().lower()
+            if "olağandışı bir durum" in page_text or "destek kodu:" in page_text:
+                print("❌ Cookies are rate-limited")
+                return False
+            
+            # Check if we're on login page
+            current_url = sb.get_current_url().lower()
+            if "login" in current_url or "giris" in current_url:
+                print("❌ Cookies are expired (redirected to login)")
+                return False
+            
+            print("✓ Cookies are valid")
+            return True
+            
+    except Exception as e:
+        print(f"Cookie validation test failed: {e}")
+        return False
+
 def _ensure_valid_session():
     """
     Ensure we have valid session cookies on startup.
-    If no cookies exist or they're expired, perform proxy login.
+    If no cookies exist, they're expired, OR they're rate-limited, perform proxy login.
+    Set FORCE_FRESH_LOGIN=1 env to force a new proxy login regardless of existing cookies.
     """
-    if not os.path.exists(SESSION_COOKIE_FILE):
+    need_fresh_login = False
+    
+    # Check for forced fresh login
+    if os.getenv("FORCE_FRESH_LOGIN", "0") == "1":
+        print("🔄 FORCE_FRESH_LOGIN=1 detected. Deleting old cookies and forcing proxy login...")
+        if os.path.exists(SESSION_COOKIE_FILE):
+            try:
+                os.remove(SESSION_COOKIE_FILE)
+                print(f"Deleted old cookies: {SESSION_COOKIE_FILE}")
+            except Exception as e:
+                print(f"Failed to delete cookies: {e}")
+        need_fresh_login = True
+    elif not os.path.exists(SESSION_COOKIE_FILE):
         print("No session cookies found. Performing initial proxy login...")
-        # Use first filter URL or default homepage
-        with STATE_LOCK:
-            filters = list(FILTERS.values())
-        target_url = filters[0]['url'] if filters else "https://www.sahibinden.com"
-        success = login_with_proxy_and_save_cookies_with_retry(target_url, max_retries=3)
-        if success:
-            print("✓ Initial proxy login successful. Cookies saved.")
-        else:
-            print("⚠ Initial proxy login failed. Will retry on first scrape.")
+        need_fresh_login = True
     else:
         print(f"Session cookies found at {SESSION_COOKIE_FILE}")
-        # Quick validation: check if cookies are fresh enough
+        # Check age
         try:
             import time as time_module
             file_age = time_module.time() - os.path.getmtime(SESSION_COOKIE_FILE)
             hours = file_age / 3600
             print(f"Session cookies age: {hours:.1f} hours")
+            
             if hours > 24:
-                print("Session cookies are old (>24h). Refreshing via proxy login...")
-                with STATE_LOCK:
-                    filters = list(FILTERS.values())
-                target_url = filters[0]['url'] if filters else "https://www.sahibinden.com"
-                login_with_proxy_and_save_cookies_with_retry(target_url, max_retries=2)
+                print("Session cookies are old (>24h). Need refresh.")
+                need_fresh_login = True
+            else:
+                # Age is OK, but test if they actually work
+                if not _test_cookies_validity():
+                    print("Session cookies failed validation test. Need refresh.")
+                    need_fresh_login = True
         except Exception as e:
             print(f"Cookie validation error: {e}")
+            need_fresh_login = True
+    
+    if need_fresh_login:
+        print("Performing proxy login to get fresh cookies...")
+        with STATE_LOCK:
+            filters = list(FILTERS.values())
+        target_url = filters[0]['url'] if filters else "https://www.sahibinden.com"
+        success = login_with_proxy_and_save_cookies_with_retry(target_url, max_retries=3)
+        if success:
+            print("✓ Proxy login successful. Fresh cookies saved.")
+        else:
+            print("⚠ Proxy login failed. Will retry on first scrape.")
 
 def bootstrap():
     """Load data and start background threads. Safe to call multiple times."""
