@@ -643,6 +643,15 @@ def _get_selenium_proxy_string(rotate_session=False):
     """
     proxy_host_port = (os.getenv("IPROYAL_PROXY") or "").strip()
     proxy_auth = (os.getenv("IPROYAL_PROXY_AUTH") or "").strip()
+    
+    # Debug: Check if env vars are actually set
+    if not proxy_host_port:
+        print("[Proxy] ❌ ERROR: IPROYAL_PROXY environment variable is NOT set in Railway!")
+        print("[Proxy] Please set: IPROYAL_PROXY=geo.iproyal.com:12321")
+    if not proxy_auth:
+        print("[Proxy] ❌ ERROR: IPROYAL_PROXY_AUTH environment variable is NOT set in Railway!")
+        print("[Proxy] Please set: IPROYAL_PROXY_AUTH=username:password_country-tr_streaming-1")
+    
     if proxy_host_port and proxy_auth:
         # Add session rotation for fresh IPs on each login
         if rotate_session and "_sessionid-" not in proxy_auth:
@@ -650,7 +659,11 @@ def _get_selenium_proxy_string(rotate_session=False):
             session_id = str(uuid.uuid4())[:8]  # Short random ID
             proxy_auth = f"{proxy_auth}_sessionid-{session_id}"
             print(f"[Proxy] Rotating session: {session_id}")
-        return f"{proxy_auth}@{proxy_host_port}"
+        
+        proxy_string = f"{proxy_auth}@{proxy_host_port}"
+        print(f"[Proxy] Configured proxy: {proxy_host_port}")
+        return proxy_string
+    
     return build_brightdata_proxy_string()
     
 def login_with_proxy_and_save_cookies_with_retry(target_url: str, max_retries: int = 3) -> bool:
@@ -689,6 +702,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     if not SAHIBINDEN_USER or not SAHIBINDEN_PASS:
         print("ERROR: SAHIBINDEN_USER/SAHIBINDEN_PASS not set. Cannot login.")
         return False
+    
+    # Debug: Show proxy configuration (mask password)
+    print(f"[Proxy] Proxy string format: {proxy_string[:30]}...@{proxy_string.split('@')[-1] if '@' in proxy_string else 'invalid'}")
 
     def _accept_cookie_banner_if_any_local(sb):
         try:
