@@ -1021,8 +1021,21 @@ def scrape_sahibinden(sb, url, known_posts):
     def _is_on_login():
         try:
             u = (sb.get_current_url() or "").lower()
-            return ("login" in u or "giris" in u or sb.is_element_visible("#username"))
-        except Exception:
+            # Check URL and presence of login form elements
+            if "login" in u or "giris" in u:
+                print(f"Detected login URL: {u}")
+                return True
+            # Check for login form elements
+            if sb.is_element_present("#username") or sb.is_element_present("input[name='username']"):
+                print(f"Detected login form on page: {u}")
+                return True
+            # Check if redirected to secure login domain
+            if "secure" in u and ("sahibinden" in u):
+                print(f"Detected secure login domain: {u}")
+                return True
+            return False
+        except Exception as e:
+            print(f"Login detection error: {e}")
             return False
 
     def _accept_cookie_banner_if_any():
@@ -1119,8 +1132,15 @@ def scrape_sahibinden(sb, url, known_posts):
     except Exception as e:
         print("Navigation with session failed:", e)
 
+    current_url = ""
+    try:
+        current_url = sb.get_current_url()
+        print(f"Current URL after navigation: {current_url}")
+    except Exception:
+        pass
+    
     if _is_on_login():
-        print("Redirected to login page due to expired/missing cookies. Login required.")
+        print(f"Redirected to login page due to expired/missing cookies. URL: {current_url}")
         raise NeedsLogin("Cookies expired")
 
     # Save any updated cookies back to disk to keep the latest session
@@ -1134,6 +1154,20 @@ def scrape_sahibinden(sb, url, known_posts):
         sb.wait_for_element_visible("tr.searchResultsItem", timeout=15)
     except Exception as e:
         print(f"Search results not found or page did not load correctly: {e}")
+        # Save diagnostic info
+        try:
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            shot_path = os.path.join(SCREENSHOTS_DIR, f"no_results_{ts}.png")
+            sb.save_screenshot(shot_path)
+            html = sb.get_page_source()
+            html_path = os.path.join(HTML_SNAPSHOTS_DIR, f"no_results_{ts}.html")
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html)
+            print(f"Saved diagnostics: {shot_path}, {html_path}")
+            print(f"Page title: {sb.get_title()}")
+            print(f"Current URL: {sb.get_current_url()}")
+        except Exception:
+            pass
         return set(), []
 
     new_posts = []
