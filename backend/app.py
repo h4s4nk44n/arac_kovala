@@ -169,11 +169,18 @@ def _get_chrome_profile_dir() -> str:
     except Exception:
         return None
 
-def _humanize_session(sb, moves: int = 10):
+def _humanize_session(sb, moves: int = 10, dwell_time_sec=None):
     """
     Emit simple human-like signals: mouse moves and incremental scrolling.
     This avoids suspiciously static sessions.
+    Args:
+        sb: SeleniumBase instance
+        moves: Number of random mouse moves
+        dwell_time_sec: Total time to spend on page (defaults to 3-8 seconds for realistic human reading)
     """
+    # Initial pause (user reading/looking at page)
+    sb.sleep(0.5 + random.random() * 1.0)
+    
     try:
         w = sb.execute_script("return window.innerWidth || 1200") or 1200
         h = sb.execute_script("return window.innerHeight || 800") or 800
@@ -193,6 +200,21 @@ def _humanize_session(sb, moves: int = 10):
             sb.sleep(0.05 + random.random() * 0.25)
     except Exception:
         pass
+    
+    # Random scroll to simulate reading
+    try:
+        scroll_amount = random.randint(100, 400)
+        sb.execute_script(f"window.scrollBy({{top: {scroll_amount}, behavior: 'smooth'}});")
+        sb.sleep(0.3 + random.random() * 0.5)
+        sb.execute_script(f"window.scrollBy({{top: -{scroll_amount // 2}, behavior: 'smooth'}});")
+    except Exception:
+        pass
+    
+    # Additional dwell time (human reading page content)
+    if dwell_time_sec is None:
+        dwell_time_sec = 3.0 + random.random() * 5.0  # 3-8 seconds
+    
+    sb.sleep(dwell_time_sec)
 
 def _get_chrome_args() -> list:
     """
@@ -611,18 +633,46 @@ def _get_iproyal_requests_proxies():
         return {"http": proxy_url, "https": proxy_url}
     return None
 
-def _get_selenium_proxy_string():
+def _get_selenium_proxy_string(rotate_session=False):
     """
     Return a proxy string suitable for SeleniumBase:
       - Prefer IPRoyal if IPROYAL_* env vars are set: 'username:password@host:port'
       - Otherwise fall back to Bright Data if BRD_* env vars are set.
+    Args:
+        rotate_session: If True, append a random session ID to force IP rotation (IPRoyal)
     """
     proxy_host_port = (os.getenv("IPROYAL_PROXY") or "").strip()
     proxy_auth = (os.getenv("IPROYAL_PROXY_AUTH") or "").strip()
     if proxy_host_port and proxy_auth:
+        # Add session rotation for fresh IPs on each login
+        if rotate_session and "_sessionid-" not in proxy_auth:
+            import uuid
+            session_id = str(uuid.uuid4())[:8]  # Short random ID
+            proxy_auth = f"{proxy_auth}_sessionid-{session_id}"
+            print(f"[Proxy] Rotating session: {session_id}")
         return f"{proxy_auth}@{proxy_host_port}"
     return build_brightdata_proxy_string()
     
+def login_with_proxy_and_save_cookies_with_retry(target_url: str, max_retries: int = 3) -> bool:
+    """
+    Wrapper around login_with_proxy_and_save_cookies with exponential backoff retry logic.
+    If proxy IP gets rate-limited, rotates to a new session and retries.
+    """
+    for attempt in range(1, max_retries + 1):
+        print(f"[Proxy Login] Attempt {attempt}/{max_retries}")
+        success = login_with_proxy_and_save_cookies(target_url)
+        if success:
+            return True
+        
+        if attempt < max_retries:
+            # Exponential backoff: 30s, 60s, 120s
+            wait_time = 30 * (2 ** (attempt - 1))
+            print(f"⏳ Proxy login failed. Waiting {wait_time}s before retry with new session...")
+            time.sleep(wait_time)
+    
+    print(f"❌ All {max_retries} proxy login attempts failed")
+    return False
+
 def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     """
     Open a fresh browser WITH proxy, perform login, save cookies to SESSION_COOKIE_FILE,
@@ -630,7 +680,8 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     """
     SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
-    proxy_string = _get_selenium_proxy_string()
+    # Use session rotation to get a fresh IP for each login attempt
+    proxy_string = _get_selenium_proxy_string(rotate_session=True)
     if not proxy_string:
         print("ERROR: IPRoyal (IPROYAL_*) or Bright Data (BRD_*) proxy env vars not set. Cannot perform proxy-backed login.")
         return False
@@ -691,6 +742,21 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 try:
                     attempt_idx += 1
                     sb.uc_open_with_reconnect(login_url, 4)
+                    
+                    # Check for rate-limit page immediately after loading
+                    try:
+                        page_text = sb.get_page_source().lower()
+                        if "olağandışı bir durum" in page_text or "destek kodu:" in page_text:
+                            print(f"⚠ Rate-limit page detected on proxy login attempt {attempt_idx}")
+                            ts_rl = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                            shot_rl = os.path.join(SCREENSHOTS_DIR, f"proxy_rate_limit_{ts_rl}.png")
+                            sb.save_screenshot(shot_rl)
+                            print(f"Proxy IP is rate-limited. Saved: {shot_rl}")
+                            # Try next login URL with same rotated session (same IP)
+                            continue
+                    except Exception:
+                        pass
+                    
                     try:
                         _bypass_turnstile_if_present(sb, 40)
                     except Exception:
@@ -1124,7 +1190,8 @@ def scrape_sahibinden(sb, url, known_posts):
         except Exception:
             pass
         try:
-            _humanize_session(sb, 6)
+            # Use shorter dwell time for scraping (1-3s) vs login (3-8s)
+            _humanize_session(sb, moves=6, dwell_time_sec=1.0 + random.random() * 2.0)
         except Exception:
             pass
         _accept_cookie_banner_if_any()
@@ -1414,7 +1481,7 @@ def _scrape_loop(poll_seconds: int = 60):
 
                 # 2) If login needed, perform proxy-backed login and retry scraping without proxy
                 if need_login:
-                    success = login_with_proxy_and_save_cookies(url)
+                    success = login_with_proxy_and_save_cookies_with_retry(url, max_retries=3)
                     if not success:
                         print("Proxy login failed; skipping this filter this cycle.")
                         continue
@@ -1507,7 +1574,10 @@ def _start_scraper_thread():
     global SCRAPER_THREAD
     if SCRAPER_THREAD and SCRAPER_THREAD.is_alive(): return
     STOP_EVENT.clear()
-    SCRAPER_THREAD = threading.Thread(target=_scrape_loop, args=(60,), daemon=True)
+    # Use SCRAPE_INTERVAL_SEC env or default to 60s (user confirmed this works fine with cookies)
+    interval = int(os.getenv("SCRAPE_INTERVAL_SEC", "60"))
+    print(f"Starting scraper with {interval}s interval between cycles")
+    SCRAPER_THREAD = threading.Thread(target=_scrape_loop, args=(interval,), daemon=True)
     SCRAPER_THREAD.start()
 
 # -------------------- API Endpoints --------------------
@@ -1648,7 +1718,7 @@ def _ensure_valid_session():
         with STATE_LOCK:
             filters = list(FILTERS.values())
         target_url = filters[0]['url'] if filters else "https://www.sahibinden.com"
-        success = login_with_proxy_and_save_cookies(target_url)
+        success = login_with_proxy_and_save_cookies_with_retry(target_url, max_retries=3)
         if success:
             print("✓ Initial proxy login successful. Cookies saved.")
         else:
@@ -1666,7 +1736,7 @@ def _ensure_valid_session():
                 with STATE_LOCK:
                     filters = list(FILTERS.values())
                 target_url = filters[0]['url'] if filters else "https://www.sahibinden.com"
-                login_with_proxy_and_save_cookies(target_url)
+                login_with_proxy_and_save_cookies_with_retry(target_url, max_retries=2)
         except Exception as e:
             print(f"Cookie validation error: {e}")
 
