@@ -741,7 +741,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             for login_url in login_urls:
                 try:
                     attempt_idx += 1
-                    sb.uc_open_with_reconnect(login_url, 4)
+                    # Use regular get() since uc=False (uc_open_with_reconnect only works with uc=True)
+                    sb.get(login_url)
+                    sb.sleep(1.5 + random.random() * 1.5)
                     
                     # Check for rate-limit page immediately after loading
                     try:
@@ -940,12 +942,10 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
 
             # Navigate to target and save cookies
             try:
-                sb.uc_open_with_reconnect(target_url, 4)
+                sb.get(target_url)
+                sb.sleep(1.5 + random.random() * 1.5)
             except Exception:
-                try:
-                    sb.get(target_url)
-                except Exception:
-                    pass
+                pass
             try:
                 _bypass_turnstile_if_present(sb, 20)
             except Exception:
