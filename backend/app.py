@@ -1139,6 +1139,23 @@ def scrape_sahibinden(sb, url, known_posts):
     except Exception:
         pass
     
+    # Check for rate-limit/bot-detection page
+    try:
+        page_text = sb.get_page_source().lower()
+        if "olağandışı bir durum" in page_text or "unusual situation" in page_text or "destek kodu:" in page_text:
+            print("⚠ Detected rate-limit/bot-detection page. Waiting before retry...")
+            # Save diagnostic
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            shot = os.path.join(SCREENSHOTS_DIR, f"rate_limit_{ts}.png")
+            sb.save_screenshot(shot)
+            print(f"Saved rate-limit screenshot: {shot}")
+            # Wait longer before retry (handled by caller)
+            raise NeedsLogin("Rate limited - need fresh session")
+    except NeedsLogin:
+        raise
+    except Exception:
+        pass
+    
     if _is_on_login():
         print(f"Redirected to login page due to expired/missing cookies. URL: {current_url}")
         raise NeedsLogin("Cookies expired")
@@ -1319,6 +1336,8 @@ def _save_data_to_disk():
 
 def _scrape_loop(poll_seconds: int = 60):
     print("Scraper loop started.")
+    retry_delays = {}  # Track per-filter retry delays for backoff
+    
     while not STOP_EVENT.is_set():
         try:
             with STATE_LOCK: items = list(FILTERS.values())
@@ -1370,9 +1389,22 @@ def _scrape_loop(poll_seconds: int = 60):
                             pass
                         try:
                             current_ids, new_posts = scrape_sahibinden(sb, url, known)
-                        except NeedsLogin:
-                            print("Cookie invalid; will refresh via proxy login.")
-                            need_login = True
+                        except NeedsLogin as e:
+                            if "Rate limited" in str(e):
+                                print("Rate limit detected. Implementing backoff...")
+                                # Exponential backoff: start at 60s, double each time, max 600s (10 min)
+                                delay = retry_delays.get(fid, 60)
+                                delay = min(delay * 2, 600)
+                                retry_delays[fid] = delay
+                                print(f"Waiting {delay} seconds before next attempt for filter {fid}")
+                                time.sleep(delay)
+                                need_login = False  # Don't trigger proxy login for rate limits
+                                continue
+                            else:
+                                print("Cookie invalid; will refresh via proxy login.")
+                                need_login = True
+                                # Reset backoff on successful login
+                                retry_delays[fid] = 60
                         except Exception as e:
                             print("Scrape attempt failed:", e)
                 except Exception as e:
@@ -1605,6 +1637,39 @@ def serve_screenshot(filename):
 
 
 # --- MODIFIED: Use a single bootstrap function ---
+def _ensure_valid_session():
+    """
+    Ensure we have valid session cookies on startup.
+    If no cookies exist or they're expired, perform proxy login.
+    """
+    if not os.path.exists(SESSION_COOKIE_FILE):
+        print("No session cookies found. Performing initial proxy login...")
+        # Use first filter URL or default homepage
+        with STATE_LOCK:
+            filters = list(FILTERS.values())
+        target_url = filters[0]['url'] if filters else "https://www.sahibinden.com"
+        success = login_with_proxy_and_save_cookies(target_url)
+        if success:
+            print("✓ Initial proxy login successful. Cookies saved.")
+        else:
+            print("⚠ Initial proxy login failed. Will retry on first scrape.")
+    else:
+        print(f"Session cookies found at {SESSION_COOKIE_FILE}")
+        # Quick validation: check if cookies are fresh enough
+        try:
+            import time as time_module
+            file_age = time_module.time() - os.path.getmtime(SESSION_COOKIE_FILE)
+            hours = file_age / 3600
+            print(f"Session cookies age: {hours:.1f} hours")
+            if hours > 24:
+                print("Session cookies are old (>24h). Refreshing via proxy login...")
+                with STATE_LOCK:
+                    filters = list(FILTERS.values())
+                target_url = filters[0]['url'] if filters else "https://www.sahibinden.com"
+                login_with_proxy_and_save_cookies(target_url)
+        except Exception as e:
+            print(f"Cookie validation error: {e}")
+
 def bootstrap():
     """Load data and start background threads. Safe to call multiple times."""
     global _BOOTSTRAPPED
@@ -1614,6 +1679,13 @@ def bootstrap():
         print("--- Bootstrapping Application ---")
         _verify_chrome_binary()
         _load_data_from_disk()
+        
+        # Ensure we have valid session before starting scraper
+        try:
+            _ensure_valid_session()
+        except Exception as e:
+            print(f"Session initialization warning: {e}")
+        
         _start_scraper_thread()
         _BOOTSTRAPPED = True
 
