@@ -729,6 +729,16 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 _humanize_session(sb, 8)
             except Exception:
                 pass
+            
+            # Verify proxy IP (optional diagnostic)
+            try:
+                print("[Proxy] Checking IP address...")
+                sb.get("https://api.ipify.org?format=json")
+                sb.sleep(1)
+                ip_info = sb.get_page_source()
+                print(f"[Proxy] Current IP: {ip_info}")
+            except Exception as e:
+                print(f"[Proxy] IP check failed: {e}")
 
             # Load login page
             login_urls = [
@@ -742,23 +752,11 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 try:
                     attempt_idx += 1
                     # Use regular get() since uc=False (uc_open_with_reconnect only works with uc=True)
+                    print(f"Loading login page: {login_url}")
                     sb.get(login_url)
                     sb.sleep(1.5 + random.random() * 1.5)
                     
-                    # Check for rate-limit page immediately after loading
-                    try:
-                        page_text = sb.get_page_source().lower()
-                        if "olağandışı bir durum" in page_text or "destek kodu:" in page_text:
-                            print(f"⚠ Rate-limit page detected on proxy login attempt {attempt_idx}")
-                            ts_rl = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                            shot_rl = os.path.join(SCREENSHOTS_DIR, f"proxy_rate_limit_{ts_rl}.png")
-                            sb.save_screenshot(shot_rl)
-                            print(f"Proxy IP is rate-limited. Saved: {shot_rl}")
-                            # Try next login URL with same rotated session (same IP)
-                            continue
-                    except Exception:
-                        pass
-                    
+                    # Try to solve any captchas/challenges BEFORE checking for rate-limit
                     try:
                         _bypass_turnstile_if_present(sb, 40)
                     except Exception:
@@ -771,15 +769,43 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                         _solve_cloudflare_checkbox(sb, 60)
                     except Exception:
                         pass
+                    
+                    # NOW check for rate-limit page (after captcha attempts)
+                    try:
+                        page_text = sb.get_page_source().lower()
+                        current_url = sb.get_current_url().lower()
+                        
+                        if "olağandışı bir durum" in page_text or "destek kodu:" in page_text:
+                            print(f"⚠ Rate-limit page detected on proxy login attempt {attempt_idx} (URL: {current_url})")
+                            ts_rl = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                            shot_rl = os.path.join(SCREENSHOTS_DIR, f"proxy_rate_limit_{ts_rl}.png")
+                            sb.save_screenshot(shot_rl)
+                            
+                            # Save HTML for analysis
+                            html_rl = os.path.join(HTML_SNAPSHOTS_DIR, f"proxy_rate_limit_{ts_rl}.html")
+                            with open(html_rl, 'w', encoding='utf-8') as f:
+                                f.write(sb.get_page_source())
+                            
+                            print(f"Proxy IP is rate-limited. Saved: {shot_rl}, {html_rl}")
+                            # Try next login URL with same rotated session (same IP)
+                            continue
+                    except Exception as e:
+                        print(f"Rate-limit check error: {e}")
+                    
                     try:
                         _humanize_session(sb, 6)
                     except Exception:
                         pass
                     _accept_cookie_banner_if_any_local(sb)
                     sb.wait_for_ready_state_complete()
+                    
+                    # Check if we successfully reached the login form
                     if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                        print(f"✓ Login page loaded successfully: {login_url}")
                         loaded = True
                         break
+                    else:
+                        print(f"Login form not found on {login_url}")
                     sb.sleep(0.8)
                 except Exception as e:
                     print("Login page open failed:", e)
