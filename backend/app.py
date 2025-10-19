@@ -714,6 +714,17 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
         except Exception:
             pass
 
+    # Parse proxy credentials for authentication
+    proxy_parts = proxy_string.split('@')
+    if len(proxy_parts) == 2:
+        auth_part = proxy_parts[0]  # username:password_options
+        server_part = proxy_parts[1]  # host:port
+        print(f"[Proxy] Server: {server_part}, Auth: {auth_part[:20]}...")
+    else:
+        print(f"[Proxy] WARNING: Proxy string format incorrect: {proxy_string}")
+        server_part = proxy_string
+        auth_part = None
+    
     try:
         print(f"[Login] Starting proxy login session (uc=False, headless={_is_headless()})")
         
@@ -725,9 +736,23 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             locale_code="tr-TR",
             window_size="1600,900",
             user_data_dir=_get_chrome_profile_dir(),
-            proxy=proxy_string,
+            proxy=f"{server_part}",  # Just host:port
             chromium_arg=",".join(_get_chrome_args()),
         ) as sb:
+            # Set proxy authentication using CDP
+            if auth_part and ':' in auth_part:
+                username = auth_part.split(':')[0]
+                password = ':'.join(auth_part.split(':')[1:])  # Password might contain ':'
+                try:
+                    print(f"[Proxy] Setting proxy authentication for user: {username[:10]}...")
+                    sb.driver.execute_cdp_cmd('Network.enable', {})
+                    sb.driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {
+                        'headers': {
+                            'Proxy-Authorization': f'Basic {__import__("base64").b64encode(f"{username}:{password}".encode()).decode()}'
+                        }
+                    })
+                except Exception as e:
+                    print(f"[Proxy] Failed to set proxy auth via CDP: {e}")
             try:
                 sb.driver.execute_cdp_cmd(
                     "Page.addScriptToEvaluateOnNewDocument",
