@@ -714,11 +714,46 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
         except Exception:
             pass
 
+    # Parse proxy for extension-based auth
+    from proxy_auth_extension import create_proxy_auth_extension
+    
+    proxy_parts = proxy_string.split('@')
+    if len(proxy_parts) == 2:
+        auth_part = proxy_parts[0]  # username:password_options
+        server_part = proxy_parts[1]  # host:port
+        
+        # Split auth
+        if ':' in auth_part:
+            proxy_user = auth_part.split(':')[0]
+            proxy_pass = ':'.join(auth_part.split(':')[1:])  # Password may contain ':'
+        else:
+            proxy_user = auth_part
+            proxy_pass = ""
+        
+        # Split server
+        if ':' in server_part:
+            proxy_host = server_part.split(':')[0]
+            proxy_port = server_part.split(':')[1]
+        else:
+            proxy_host = server_part
+            proxy_port = "80"
+        
+        print(f"[Proxy] Creating auth extension for {proxy_host}:{proxy_port}")
+        proxy_ext_dir = create_proxy_auth_extension(proxy_host, proxy_port, proxy_user, proxy_pass)
+        print(f"[Proxy] Extension created at: {proxy_ext_dir}")
+    else:
+        print(f"[Proxy] WARNING: Invalid proxy format")
+        proxy_ext_dir = None
+    
     try:
         print(f"[Login] Starting proxy login session (uc=False, headless={_is_headless()})")
-        print(f"[Proxy] Full proxy string: {proxy_string[:30]}...@{proxy_string.split('@')[-1]}")
         
-        # SeleniumBase should handle proxy auth automatically with username:password@host:port format
+        # Prepare Chrome args with extension
+        chrome_args = _get_chrome_args()
+        if proxy_ext_dir:
+            chrome_args.append(f"--load-extension={proxy_ext_dir}")
+            chrome_args.append("--disable-extensions-except=" + proxy_ext_dir)
+        
         with SB(
             uc=False,
             headless=_is_headless(),
@@ -727,17 +762,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             locale_code="tr-TR",
             window_size="1600,900",
             user_data_dir=_get_chrome_profile_dir(),
-            proxy=proxy_string,  # Full format: username:password@host:port
-            chromium_arg=",".join(_get_chrome_args()),
+            chromium_arg=",".join(chrome_args),
         ) as sb:
-            print(f"[Proxy] ✓ Browser started with proxy")
-            
-            # Verify proxy is configured in Chrome
-            try:
-                proxy_settings = sb.driver.execute_cdp_cmd('Network.getResponseBody', {})
-                print(f"[Proxy] Chrome proxy settings verified")
-            except Exception as e:
-                print(f"[Proxy] Could not verify proxy settings: {e}")
+            print(f"[Proxy] ✓ Browser started with proxy extension")
             
             try:
                 sb.driver.execute_cdp_cmd(
