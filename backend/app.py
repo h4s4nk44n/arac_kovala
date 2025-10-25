@@ -735,9 +735,9 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
 
     return False
 
-def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 120) -> bool:
+def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180) -> bool:
     """
-    Use 2Captcha API service to solve reCAPTCHA v2/v3 challenges.
+    Use 2Captcha API service to solve reCAPTCHA v2/v3 challenges (including image challenges).
     Requires TWOCAPTCHA_API_KEY environment variable.
     Returns True if CAPTCHA is solved, False otherwise.
     """
@@ -808,14 +808,15 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 120) -> bool:
         except Exception:
             pass
         
-        # Submit CAPTCHA to 2Captcha API
-        print("[2Captcha] Submitting CAPTCHA to 2Captcha service...")
+        # Submit CAPTCHA to 2Captcha API with enterprise/invisible detection
+        print("[2Captcha] Submitting CAPTCHA to 2Captcha service (with image challenge support)...")
         submit_url = "http://2captcha.com/in.php"
         submit_params = {
             'key': api_key,
             'method': 'userrecaptcha',
             'googlekey': sitekey,
             'pageurl': page_url,
+            'invisible': 1,  # Handle both visible and invisible
             'json': 1
         }
 
@@ -858,8 +859,8 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 120) -> bool:
             print(f"[2Captcha] Submit request failed: {e}")
             return False
         
-        # Poll for solution (typically takes 30-60 seconds)
-        print("[2Captcha] Waiting for solution (this may take 30-60 seconds)...")
+        # Poll for solution (typically takes 30-60 seconds, image challenges can take 60-120s)
+        print("[2Captcha] Waiting for solution (image challenges may take 60-120 seconds)...")
         result_url = "http://2captcha.com/res.php"
         start = time.time()
         poll_delay = 5  # Check every 5 seconds
@@ -977,8 +978,8 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 120) -> bool:
                 
                 elif result.get('request') == 'CAPCHA_NOT_READY':
                     elapsed = int(time.time() - start)
-                    if elapsed % 15 == 0:
-                        print(f"[2Captcha] Still waiting... ({elapsed}s elapsed)")
+                    if elapsed % 20 == 0:  # Print every 20s instead of 15s
+                        print(f"[2Captcha] Still waiting (image challenge solving)... ({elapsed}s elapsed)")
                     continue
                 
                 else:
@@ -1317,9 +1318,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             # Type credentials and submit
             print("[Login] Solving pre-login CAPTCHAs...")
             
-            # Try Buster first for any reCAPTCHA/hCaptcha on login page
+            # Try 2Captcha with extended timeout for image challenges
             try:
-                _solve_recaptcha_with_2captcha(sb, 60)
+                _solve_recaptcha_with_2captcha(sb, 180)  # 3 minutes for image challenges
             except Exception:
                 pass
             
@@ -1433,9 +1434,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             for attempt in range(3):
                 print(f"[Login] CAPTCHA solving attempt {attempt + 1}/3")
                 
-                # First, try 2Captcha API service (best for reCAPTCHA)
+                # First, try 2Captcha API service (best for reCAPTCHA, handles image challenges)
                 try:
-                    if _solve_recaptcha_with_2captcha(sb, 120):
+                    if _solve_recaptcha_with_2captcha(sb, 180):  # 3 minutes for image challenges
                         print("[Login] ✓ 2Captcha solved the CAPTCHA!")
                         # Wait and check for redirect multiple times (form may take time to process)
                         for check_attempt in range(10):
