@@ -2464,20 +2464,28 @@ def bootstrap():
         if _BOOTSTRAPPED:
             return
         print("--- Bootstrapping Application ---")
-        _verify_chrome_binary()
         _load_data_from_disk()
         
-        # Ensure we have valid session before starting scraper.
-        # Run the potentially-long session initialization in a background thread
-        # so the first HTTP request doesn't block while we attempt a proxy login.
-        try:
-            t = threading.Thread(target=_ensure_valid_session, daemon=True)
-            t.start()
-            print("Session initialization started in background thread")
-        except Exception as e:
-            print(f"Session initialization (background) warning: {e}")
+        # Run all heavy initialization in background threads to avoid blocking the first request
+        def _background_init():
+            try:
+                print("Background initialization started...")
+                _verify_chrome_binary()
+                _ensure_valid_session()
+                _start_scraper_thread()
+                print("✓ Background initialization complete")
+            except Exception as e:
+                print(f"❌ Background initialization error: {e}")
+                import traceback
+                traceback.print_exc()
         
-        _start_scraper_thread()
+        try:
+            t = threading.Thread(target=_background_init, daemon=True)
+            t.start()
+            print("✓ Bootstrap initiated (heavy tasks running in background)")
+        except Exception as e:
+            print(f"⚠ Bootstrap warning: {e}")
+        
         _BOOTSTRAPPED = True
 
 

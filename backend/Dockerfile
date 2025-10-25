@@ -46,12 +46,19 @@ RUN google-chrome --version && \
 # Recommend environment flags for Chrome inside containers
 ENV EXTRA_CHROME_ARGS="--disable-dev-shm-usage,--no-sandbox"
 
-# Create startup script that fixes chromedriver permissions
+# Create startup script that fixes chromedriver permissions and shows errors
 RUN echo '#!/bin/bash\n\
+set -e\n\
 echo "Fixing chromedriver permissions..."\n\
 find /usr/local/lib/python*/site-packages/seleniumbase/drivers/ -name "chromedriver*" -exec chmod +x {} \\; 2>/dev/null || true\n\
 echo "Starting application with xvfb and gunicorn..."\n\
-exec xvfb-run -a -s "-screen 0 1920x1080x24" gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app\n\
+echo "Working directory: $(pwd)"\n\
+echo "Files in /app: $(ls -la /app/)"\n\
+echo "Python version: $(python --version)"\n\
+echo "Testing app import..."\n\
+python -c "from app import app; print(\"✓ Flask app imported successfully\")" || { echo "❌ Failed to import Flask app"; exit 1; }\n\
+echo "Starting gunicorn on 0.0.0.0:${PORT:-8080}..."\n\
+exec xvfb-run -a -s "-screen 0 1920x1080x24" gunicorn -w 1 -k gthread --bind 0.0.0.0:${PORT:-8080} --timeout 120 --log-level debug app:app\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 CMD ["/app/start.sh"]
