@@ -1604,6 +1604,44 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 return False
             
             print("✓ Login appears successful (redirected away from login page)")
+            
+            # Check if we're on the 2FA page
+            try:
+                current_url_check = sb.get_current_url()
+                if "iki-asamali-dogrulama" in current_url_check or "twoFactor" in current_url_check:
+                    print("[Login] ⚠ 2FA page detected!")
+                    print("[Login] URL: " + current_url_check)
+                    
+                    # Save cookies anyway - they might be partially valid
+                    print("[Login] Saving cookies from 2FA page (may help avoid 2FA on next login)...")
+                    try:
+                        with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+                            json.dump(sb.get_cookies(), f)
+                        print(f"[Login] ✓ Saved 2FA cookies to {SESSION_COOKIE_FILE}")
+                    except Exception as e:
+                        print(f"[Login] Failed to save 2FA cookies: {e}")
+                    
+                    # Try to navigate directly to the main site
+                    # Sometimes cookies from 2FA page still work for browsing
+                    print("[Login] Attempting to navigate to main site anyway...")
+                    try:
+                        sb.get("https://www.sahibinden.com")
+                        sb.sleep(2)
+                        
+                        # Check if we're still on 2FA or if we can browse
+                        final_url = sb.get_current_url()
+                        if "iki-asamali-dogrulama" not in final_url and "twoFactor" not in final_url:
+                            print("[Login] ✓ Successfully navigated away from 2FA! Cookies may be valid.")
+                        else:
+                            print("[Login] ⚠ Still stuck on 2FA. Manual intervention required.")
+                            print("[Login] SOLUTION: Log in manually and upload cookies to /data/session_cookies.json")
+                    except Exception as e:
+                        print(f"[Login] Navigation attempt failed: {e}")
+                    
+                    return False  # Login technically failed due to 2FA
+                    
+            except Exception as e:
+                print(f"[Login] Error checking for 2FA: {e}")
 
             # Navigate to target and save cookies
             try:
