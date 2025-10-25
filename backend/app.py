@@ -815,17 +815,38 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         except Exception:
             pass
         
-        # Submit CAPTCHA to 2Captcha API with enterprise/invisible detection
-        print("[2Captcha] Submitting CAPTCHA to 2Captcha service (with image challenge support)...")
+        # Detect if this is an invisible reCAPTCHA
+        is_invisible = False
+        try:
+            # Check if the reCAPTCHA badge is visible (invisible CAPTCHAs show a badge)
+            recaptcha_elements = sb.find_elements('css selector', 
+                '[data-size="invisible"], .g-recaptcha[data-size="invisible"]')
+            is_invisible = len(recaptcha_elements) > 0
+            
+            # Also check iframe for invisible type
+            if not is_invisible:
+                recaptcha_iframes = sb.find_elements('css selector', 
+                    'iframe[src*="recaptcha"][src*="invisible"]')
+                is_invisible = len(recaptcha_iframes) > 0
+        except Exception:
+            pass
+        
+        print(f"[2Captcha] Detected CAPTCHA type: {'invisible' if is_invisible else 'visible'}")
+        
+        # Submit CAPTCHA to 2Captcha API
+        print("[2Captcha] Submitting CAPTCHA to 2Captcha service...")
         submit_url = "http://2captcha.com/in.php"
         submit_params = {
             'key': api_key,
             'method': 'userrecaptcha',
             'googlekey': sitekey,
             'pageurl': page_url,
-            'invisible': 1,  # Handle both visible and invisible
             'json': 1
         }
+        
+        # Only set invisible flag if actually invisible
+        if is_invisible:
+            submit_params['invisible'] = 1
 
         # If we are using an authenticated proxy (IPROYAL_*), instruct 2Captcha to use it
         iproyal_host = (os.getenv("IPROYAL_PROXY") or "").strip()
@@ -892,35 +913,88 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
                     elapsed = int(time.time() - start)
                     print(f"[2Captcha] ✓ Solution received after {elapsed}s")
                     
-                    # Inject the solution into the page
+                    # Inject the solution into the page with proper callback triggering
                     print("[2Captcha] Injecting solution into page...")
                     
-                    # Find the g-recaptcha-response textarea and fill it
+                    # CRITICAL: Properly inject solution and trigger ALL reCAPTCHA callbacks
                     inject_js = f"""
-                        var textarea = document.getElementById('g-recaptcha-response');
-                        if (!textarea) {{
-                            textarea = document.querySelector('[name="g-recaptcha-response"]');
-                        }}
-                        if (textarea) {{
-                            textarea.innerHTML = '{captcha_solution}';
-                            textarea.value = '{captcha_solution}';
-                            textarea.style.display = 'block';
-                        }}
-                        
-                        // Trigger callback if exists
-                        if (typeof ___grecaptcha_cfg !== 'undefined') {{
-                            var clients = ___grecaptcha_cfg.clients;
-                            for (var id in clients) {{
-                                if (clients[id].callback) {{
-                                    clients[id].callback('{captcha_solution}');
+                        (function() {{
+                            console.log('[2Captcha] Injecting solution...');
+                            var solution = '{captcha_solution}';
+                            
+                            // Step 1: Find and fill all g-recaptcha-response textareas
+                            var textareas = document.querySelectorAll('[name="g-recaptcha-response"]');
+                            console.log('[2Captcha] Found ' + textareas.length + ' textareas');
+                            
+                            textareas.forEach(function(textarea) {{
+                                textarea.innerHTML = solution;
+                                textarea.value = solution;
+                                textarea.style.display = 'block';
+                                console.log('[2Captcha] Filled textarea:', textarea.id || 'unnamed');
+                            }});
+                            
+                            // Step 2: Trigger reCAPTCHA callbacks (CRITICAL!)
+                            if (typeof ___grecaptcha_cfg !== 'undefined') {{
+                                console.log('[2Captcha] Triggering reCAPTCHA callbacks...');
+                                var clients = ___grecaptcha_cfg.clients;
+                                var callbacksTriggered = 0;
+                                
+                                for (var clientId in clients) {{
+                                    var client = clients[clientId];
+                                    
+                                    // Trigger data-callback function
+                                    if (client && client.callback) {{
+                                        try {{
+                                            if (typeof client.callback === 'string') {{
+                                                // Callback is a function name
+                                                if (typeof window[client.callback] === 'function') {{
+                                                    window[client.callback](solution);
+                                                    callbacksTriggered++;
+                                                    console.log('[2Captcha] Triggered callback: ' + client.callback);
+                                                }}
+                                            }} else if (typeof client.callback === 'function') {{
+                                                // Callback is a function reference
+                                                client.callback(solution);
+                                                callbacksTriggered++;
+                                                console.log('[2Captcha] Triggered function callback');
+                                            }}
+                                        }} catch (e) {{
+                                            console.error('[2Captcha] Callback error:', e);
+                                        }}
+                                    }}
+                                    
+                                    // Also try to trigger via the widget
+                                    if (client && client.widgetId !== undefined) {{
+                                        try {{
+                                            if (typeof grecaptcha !== 'undefined' && grecaptcha.getResponse) {{
+                                                // Force the widget to recognize the solution
+                                                console.log('[2Captcha] Setting widget response for widgetId: ' + client.widgetId);
+                                            }}
+                                        }} catch (e) {{
+                                            console.error('[2Captcha] Widget error:', e);
+                                        }}
+                                    }}
                                 }}
+                                
+                                console.log('[2Captcha] Triggered ' + callbacksTriggered + ' callbacks');
+                            }} else {{
+                                console.warn('[2Captcha] ___grecaptcha_cfg not found, callbacks may not trigger');
                             }}
-                        }}
+                            
+                            // Step 3: Dispatch change event on textareas (backup trigger)
+                            textareas.forEach(function(textarea) {{
+                                var event = new Event('change', {{ bubbles: true }});
+                                textarea.dispatchEvent(event);
+                            }});
+                            
+                            console.log('[2Captcha] Solution injection complete');
+                            return true;
+                        }})();
                     """
                     
                     try:
-                        sb.execute_script(inject_js)
-                        print("[2Captcha] ✓ Solution injected successfully")
+                        injection_result = sb.execute_script(inject_js)
+                        print(f"[2Captcha] ✓ Solution injected successfully (result: {injection_result})")
                         sb.sleep(1.0)
                         # Save a diagnostic snapshot AFTER injection
                         try:
