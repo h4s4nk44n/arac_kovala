@@ -927,7 +927,6 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
 
             # Load login page
             login_urls = [
-                "https://secure2.sahibinden.com/giris",
                 "https://secure.sahibinden.com/giris",
                 "https://www.sahibinden.com/giris",
             ]
@@ -1039,6 +1038,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 return False
 
             # Type credentials and submit
+            print("[Login] Solving pre-login CAPTCHAs...")
             try:
                 _bypass_turnstile_if_present(sb, 20)
             except Exception:
@@ -1055,24 +1055,63 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 _humanize_session(sb, 6)
             except Exception:
                 pass
+            
+            # CHANGED: Slow, human-like typing with better error handling
+            print("[Login] Entering credentials...")
+            sb.sleep(0.5 + random.random())
+            
             try:
-                sb.cdp.click("#username")
-            except Exception:
-                pass
-            try:
-                sb.cdp.press_keys("#username", SAHIBINDEN_USER)
-            except Exception:
-                sb.type("#username", SAHIBINDEN_USER)
-            sb.sleep(0.6)
-            try:
-                sb.cdp.click("#password")
-            except Exception:
-                pass
-            try:
-                sb.cdp.press_keys("#password", SAHIBINDEN_PASS)
-            except Exception:
-                sb.type("#password", SAHIBINDEN_PASS)
+                # Click username field to focus
+                try:
+                    sb.cdp.click("#username")
+                    sb.sleep(0.3)
+                except Exception:
+                    try:
+                        sb.click("#username")
+                        sb.sleep(0.3)
+                    except Exception:
+                        pass
+                
+                # Type username character by character (realistic 50-150ms per char)
+                username_field = sb.find_element("#username")
+                for char in SAHIBINDEN_USER:
+                    username_field.send_keys(char)
+                    sb.sleep(0.05 + random.random() * 0.1)
+                
+                sb.sleep(0.5 + random.random() * 0.5)
+                
+                # Click password field
+                try:
+                    sb.cdp.click("#password")
+                    sb.sleep(0.3)
+                except Exception:
+                    try:
+                        sb.click("#password")
+                        sb.sleep(0.3)
+                    except Exception:
+                        pass
+                
+                # Type password character by character
+                password_field = sb.find_element("#password")
+                for char in SAHIBINDEN_PASS:
+                    password_field.send_keys(char)
+                    sb.sleep(0.05 + random.random() * 0.1)
+                
+                sb.sleep(1.0 + random.random())  # Pause before submit (human-like)
+                
+            except Exception as e:
+                print(f"[Login] Credential entry failed: {e}")
+                # Save diagnostic
+                try:
+                    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    shot = os.path.join(SCREENSHOTS_DIR, f"login_cred_entry_fail_{ts}.png")
+                    sb.save_screenshot(shot)
+                except Exception:
+                    pass
+                return False
 
+            # Submit the form
+            print("[Login] Submitting login form...")
             submitted = False
             for sel in ("#userLoginSubmitButton", "button[type='submit']", "input[type='submit']"):
                 try:
@@ -1085,23 +1124,28 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                             except Exception:
                                 sb.click(sel)
                         submitted = True
+                        print(f"[Login] Clicked submit button: {sel}")
                         break
                 except Exception:
                     continue
+            
             if not submitted:
+                print("[Login] No submit button found, trying Enter key...")
                 try:
-                    sb.cdp.press_keys("#password", "\n")
+                    password_field.send_keys("\n")
                     submitted = True
-                except Exception:
-                    try:
-                        sb.press_keys("#password", "\n")
-                        submitted = True
-                    except Exception:
-                        pass
+                except Exception as e:
+                    print(f"[Login] Enter key failed: {e}")
+                    return False
 
-            sb.sleep(3)
+            # CRITICAL: Wait for page to change after submit
+            print("[Login] Waiting for post-login response...")
+            sb.sleep(3.0)  # Initial wait for server response
+            
+            # Solve any post-login CAPTCHAs
+            print("[Login] Solving post-login CAPTCHAs...")
             try:
-                _bypass_turnstile_if_present(sb, 20)
+                _bypass_turnstile_if_present(sb, 30)
             except Exception:
                 pass
             try:
@@ -1112,28 +1156,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 _solve_cloudflare_checkbox(sb, 60)
             except Exception:
                 pass
-            # Extra diagnostics if still on login after submit
-            try:
-                if _still_on_login():
-                    ts_after = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    shot2 = os.path.join(SCREENSHOTS_DIR, f"proxy_login_after_submit_{ts_after}.png")
-                    sb.save_screenshot(shot2)
-                    html2 = ""
-                    try:
-                        html2 = sb.get_page_source()
-                    except Exception:
-                        try:
-                            html2 = sb.driver.page_source
-                        except Exception:
-                            html2 = ""
-                    if html2:
-                        html2_path = os.path.join(HTML_SNAPSHOTS_DIR, f"proxy_login_after_submit_{ts_after}.html")
-                        with open(html2_path, 'w', encoding='utf-8') as f:
-                            f.write(html2)
-                        print(f"Saved proxy login post-submit diagnostics: {shot2} , {html2_path}")
-            except Exception:
-                pass
-
+            
             # Basic validation: still on login?
             def _still_on_login() -> bool:
                 try:
@@ -1146,10 +1169,64 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     return sb.is_element_present("#username")
                 except Exception:
                     return False
-
+            
+            # Wait for redirect (up to 10 seconds)
+            print("[Login] Checking for redirect...")
+            max_wait = 10
+            start_wait = time.time()
+            while time.time() - start_wait < max_wait:
+                if not _still_on_login():
+                    break
+                sb.sleep(0.5)
+            
+            # Check login result and save diagnostics if failed
+            current_url_after = ""
+            try:
+                current_url_after = sb.get_current_url()
+                print(f"[Login] URL after submit: {current_url_after}")
+            except Exception:
+                pass
+            
             if _still_on_login():
-                print("Login did not succeed with proxy.")
+                # Login failed - save detailed diagnostics
+                print("❌ Login did not succeed (still on login page)")
+                
+                try:
+                    page_html = sb.get_page_source()
+                    
+                    # Check for Turkish error messages
+                    error_indicators = {
+                        "wrong_credentials": ["hatalı kullanıcı", "şifre hatalı", "geçersiz"],
+                        "captcha_required": ["doğrulama", "robot", "captcha", "güvenlik"],
+                        "rate_limit": ["çok fazla", "geçici olarak", "sonra tekrar"],
+                        "account_locked": ["kilitlendi", "askıya alındı"],
+                    }
+                    
+                    found_errors = []
+                    for error_type, patterns in error_indicators.items():
+                        for pattern in patterns:
+                            if pattern in page_html.lower():
+                                found_errors.append(f"{error_type}: {pattern}")
+                    
+                    if found_errors:
+                        print(f"❌ Detected login errors: {', '.join(found_errors)}")
+                    
+                    # Save screenshot and HTML
+                    ts_after = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    shot2 = os.path.join(SCREENSHOTS_DIR, f"login_failed_{ts_after}.png")
+                    sb.save_screenshot(shot2)
+                    html2_path = os.path.join(HTML_SNAPSHOTS_DIR, f"login_failed_{ts_after}.html")
+                    with open(html2_path, 'w', encoding='utf-8') as f:
+                        f.write(page_html)
+                    
+                    print(f"Saved diagnostics: {shot2}, {html2_path}")
+                    
+                except Exception as e:
+                    print(f"Failed to save diagnostics: {e}")
+                
                 return False
+            
+            print("✓ Login appears successful (redirected away from login page)")
 
             # Navigate to target and save cookies
             try:
