@@ -735,10 +735,17 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
 
     return False
 
-def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180) -> bool:
+def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit: bool = True) -> bool:
     """
     Use 2Captcha API service to solve reCAPTCHA v2/v3 challenges (including image challenges).
     Requires TWOCAPTCHA_API_KEY environment variable.
+    
+    Args:
+        sb: SeleniumBase driver instance
+        max_wait_seconds: Maximum time to wait for solution (default 180s for image challenges)
+        auto_submit: Whether to auto-submit the form after injecting solution (default True)
+                     Set to False for pre-login CAPTCHAs where credentials need to be entered first
+    
     Returns True if CAPTCHA is solved, False otherwise.
     """
     api_key = os.getenv("TWOCAPTCHA_API_KEY", "").strip()
@@ -934,42 +941,45 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180) -> bool:
                         except Exception:
                             pass
                         
-                        # Auto-submit the form after CAPTCHA solution
-                        print("[2Captcha] Auto-submitting form after solution...")
-                        try:
-                            # Try to find and click the submit button
-                            submit_selectors = [
-                                "#userLoginSubmitButton",
-                                "button[type='submit']",
-                                "input[type='submit']",
-                                "button.submit",
-                                ".submit-button"
-                            ]
-                            
-                            submitted = False
-                            for sel in submit_selectors:
-                                try:
-                                    if sb.is_element_present(sel):
-                                        sb.execute_script(f"document.querySelector('{sel}').click();")
-                                        print(f"[2Captcha] Clicked submit button: {sel}")
-                                        submitted = True
-                                        break
-                                except Exception:
-                                    continue
-                            
-                            if not submitted:
-                                # Try to submit the form directly
-                                sb.execute_script("""
-                                    var forms = document.querySelectorAll('form');
-                                    if (forms.length > 0) {
-                                        forms[0].submit();
-                                    }
-                                """)
-                                print("[2Captcha] Submitted form directly")
-                            
-                            sb.sleep(2.0)  # Wait for form submission
-                        except Exception as e:
-                            print(f"[2Captcha] Auto-submit warning: {e}")
+                        # Auto-submit the form after CAPTCHA solution (if enabled)
+                        if auto_submit:
+                            print("[2Captcha] Auto-submitting form after solution...")
+                            try:
+                                # Try to find and click the submit button
+                                submit_selectors = [
+                                    "#userLoginSubmitButton",
+                                    "button[type='submit']",
+                                    "input[type='submit']",
+                                    "button.submit",
+                                    ".submit-button"
+                                ]
+                                
+                                submitted = False
+                                for sel in submit_selectors:
+                                    try:
+                                        if sb.is_element_present(sel):
+                                            sb.execute_script(f"document.querySelector('{sel}').click();")
+                                            print(f"[2Captcha] Clicked submit button: {sel}")
+                                            submitted = True
+                                            break
+                                    except Exception:
+                                        continue
+                                
+                                if not submitted:
+                                    # Try to submit the form directly
+                                    sb.execute_script("""
+                                        var forms = document.querySelectorAll('form');
+                                        if (forms.length > 0) {
+                                            forms[0].submit();
+                                        }
+                                    """)
+                                    print("[2Captcha] Submitted form directly")
+                                
+                                sb.sleep(2.0)  # Wait for form submission
+                            except Exception as e:
+                                print(f"[2Captcha] Auto-submit warning: {e}")
+                        else:
+                            print("[2Captcha] ✓ Solution injected (auto-submit disabled, form will be submitted manually)")
                         
                         return True
                     except Exception as e:
@@ -1319,8 +1329,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             print("[Login] Solving pre-login CAPTCHAs...")
             
             # Try 2Captcha with extended timeout for image challenges
+            # NOTE: auto_submit=False because we need to enter credentials BEFORE submitting
             try:
-                _solve_recaptcha_with_2captcha(sb, 180)  # 3 minutes for image challenges
+                _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=False)
             except Exception:
                 pass
             
