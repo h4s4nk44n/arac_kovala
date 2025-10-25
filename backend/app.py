@@ -738,86 +738,146 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
 def _solve_recaptcha_with_buster(sb, max_wait_seconds: int = 120) -> bool:
     """
     Use Buster extension to solve reCAPTCHA/hCaptcha challenges.
-    Buster works by clicking the audio challenge button and solving it automatically.
+    Buster adds a solver button in a closed shadow root (undetectable via CSS).
+    We click on the PHYSICAL LOCATION where the button appears (near audio button).
     Returns True if CAPTCHA appears to be solved, False otherwise.
     """
-    print("[Buster] Looking for reCAPTCHA/hCaptcha challenges...")
+    print("[Buster] Looking for reCAPTCHA/hCaptcha challenge iframe...")
     
     def _captcha_present() -> bool:
         try:
-            # Check for reCAPTCHA iframe
+            # Check for reCAPTCHA challenge iframe (bframe - the actual challenge box)
             recaptcha_frames = sb.find_elements('css selector', 
-                'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[title*="reCAPTCHA"]')
-            if recaptcha_frames:
-                return True
-            
-            # Check for CAPTCHA challenge text
-            html = (sb.get_page_source() or '').lower()
-            return any(word in html for word in ['recaptcha', 'hcaptcha', 'captcha', 'doğrulama'])
+                'iframe[src*="api2/bframe"], iframe[src*="recaptcha/api2/anchor"], iframe[src*="hcaptcha"], iframe[title*="recaptcha challenge"]')
+            return bool(recaptcha_frames)
         except Exception:
             return False
     
     def _captcha_solved() -> bool:
         try:
-            # Check if still showing CAPTCHA
+            # Check if challenge iframe still visible
+            sb.driver.switch_to.default_content()
+            still_present = _captcha_present()
+            if not still_present:
+                return True
+            
+            # Check page HTML for CAPTCHA indicators
             html = (sb.get_page_source() or '').lower()
-            # If these challenge indicators are gone, likely solved
-            still_showing = any(word in html for word in ['recaptcha', 'hcaptcha', 'robot değilim', 'i\'m not a robot'])
+            still_showing = any(word in html for word in ['recaptcha/api2/bframe', 'select all images', 'verify you are human'])
             return not still_showing
         except Exception:
             return False
     
     if not _captcha_present():
-        print("[Buster] No CAPTCHA detected")
+        print("[Buster] No reCAPTCHA challenge iframe detected")
         return False
     
-    print("[Buster] CAPTCHA detected, attempting to solve...")
+    print("[Buster] ✓ reCAPTCHA challenge detected, invoking Buster...")
     start = time.time()
     
-    # Give Buster extension time to detect and start solving
-    sb.sleep(2.0)
-    
-    # Try to find and click the Buster solve button if visible
     try:
-        # Buster adds a button to the page when it detects CAPTCHA
-        # Look for the Buster icon/button (it may be in an iframe or on the main page)
-        buster_selectors = [
-            'button[id*="buster"]',
-            'div[id*="buster"]',
-            'img[alt*="Buster"]',
-            '[class*="buster"]',
-        ]
+        # Find the reCAPTCHA challenge iframe (bframe)
+        sb.driver.switch_to.default_content()
+        recaptcha_frames = sb.find_elements('css selector', 
+            'iframe[src*="api2/bframe"], iframe[title*="recaptcha challenge"]')
         
-        for selector in buster_selectors:
+        if not recaptcha_frames:
+            print("[Buster] Could not find challenge iframe")
+            return False
+        
+        # Switch to the challenge iframe
+        challenge_frame = recaptcha_frames[0]
+        sb.driver.switch_to.frame(challenge_frame)
+        print("[Buster] Switched to reCAPTCHA challenge iframe")
+        
+        # Give Buster extension time to inject its button (2-3 seconds)
+        sb.sleep(3.0)
+        
+        # Buster's solver button appears in the button-holder area (closed shadow root)
+        # We can't detect it with CSS, so we click on its PHYSICAL LOCATION
+        # The button typically appears between the audio button and help button
+        
+        # Strategy 1: Try to find the audio button and click nearby (where Buster injects)
+        try:
+            audio_button = sb.find_element('#recaptcha-audio-button')
+            # Get audio button location
+            location = audio_button.location
+            size = audio_button.size
+            
+            # Buster button appears to the RIGHT of the audio button
+            # Click approximately 60-80 pixels to the right of audio button center
+            buster_x = location['x'] + size['width'] + 70
+            buster_y = location['y'] + (size['height'] // 2)
+            
+            print(f"[Buster] Clicking Buster button location (estimated): x={buster_x}, y={buster_y}")
+            
+            # Use JavaScript to dispatch a click event at the coordinates
+            sb.execute_script(f"""
+                var event = new MouseEvent('click', {{
+                    view: window,
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: {buster_x},
+                    clientY: {buster_y}
+                }});
+                document.elementFromPoint({buster_x}, {buster_y}).dispatchEvent(event);
+            """)
+            
+            print("[Buster] ✓ Clicked Buster solver button (coordinate-based)")
+            
+        except Exception as e:
+            print(f"[Buster] Could not click via coordinates: {e}")
+            
+            # Strategy 2: Click on the button-holder div that contains Buster's button
             try:
-                if sb.is_element_present(selector):
-                    print(f"[Buster] Found Buster button: {selector}")
-                    sb.click(selector)
-                    print("[Buster] Clicked Buster solve button")
-                    break
-            except Exception:
-                continue
+                # Look for the help-button-holder or area where Buster typically injects
+                button_holders = sb.find_elements('css selector', '.button-holder.help-button-holder, .rc-buttons .button-holder')
+                
+                for holder in button_holders:
+                    try:
+                        # Click in the center of each button-holder
+                        sb.execute_script("arguments[0].click();", holder)
+                        print(f"[Buster] Clicked button-holder (fallback method)")
+                        sb.sleep(0.5)
+                    except Exception:
+                        continue
+            except Exception as e2:
+                print(f"[Buster] Fallback click also failed: {e2}")
+        
+        # Switch back to default content to monitor for challenge completion
+        sb.driver.switch_to.default_content()
+        sb.sleep(2.0)
+        
     except Exception as e:
-        print(f"[Buster] Could not click Buster button: {e}")
+        print(f"[Buster] Error during iframe interaction: {e}")
+        try:
+            sb.driver.switch_to.default_content()
+        except Exception:
+            pass
     
     # Wait for Buster to solve the CAPTCHA (can take 30-90 seconds)
     print("[Buster] Waiting for Buster to solve CAPTCHA (this may take 1-2 minutes)...")
     
+    check_interval = 5.0
     while time.time() - start < max_wait_seconds:
         if _captcha_solved():
             elapsed = int(time.time() - start)
-            print(f"[Buster] ✓ CAPTCHA appears solved after {elapsed}s")
+            print(f"[Buster] ✓ CAPTCHA solved after {elapsed}s!")
             return True
         
         # Check progress every 5 seconds
-        sb.sleep(5.0)
+        sb.sleep(check_interval)
         
-        # Log progress
+        # Log progress every 15 seconds
         elapsed = int(time.time() - start)
         if elapsed % 15 == 0:
             print(f"[Buster] Still solving... ({elapsed}s elapsed)")
     
     print(f"[Buster] ⚠ CAPTCHA not solved after {max_wait_seconds}s")
+    try:
+        sb.driver.switch_to.default_content()
+    except Exception:
+        pass
     return False
 
 def build_brightdata_proxy_string(country_code="tr", session_id=None):
