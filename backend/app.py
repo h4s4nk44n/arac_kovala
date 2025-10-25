@@ -736,7 +736,7 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
 
     return False
 
-def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit: bool = True) -> bool:
+def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit: bool = True, proxy_string: str = None) -> bool:
     """
     Use 2Captcha API service (official SDK) to solve reCAPTCHA v2/v3 challenges (including image challenges).
     Requires TWOCAPTCHA_API_KEY environment variable.
@@ -746,6 +746,7 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         max_wait_seconds: Maximum time to wait for solution (default 180s for image challenges)
         auto_submit: Whether to auto-submit the form after injecting solution (default True)
                      Set to False for pre-login CAPTCHAs where credentials need to be entered first
+        proxy_string: Proxy string in format "user:pass@host:port" to use for solving (CRITICAL for IP matching)
     
     Returns True if CAPTCHA is solved, False otherwise.
     """
@@ -838,14 +839,36 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         # Prepare solver parameters and submit using official SDK
         print("[2Captcha] Submitting CAPTCHA to 2Captcha service (via official SDK)...")
         
-        # CRITICAL: Do NOT send proxy to 2Captcha workers
-        # Proxy creates IP mismatch between solver and browser, causing Google to reject the solution
-        # Let workers solve from their own IPs - the solution will work universally
+        # CRITICAL: Use the SAME proxy that the browser is using
+        # This ensures the 2Captcha worker and browser have the same IP address
         solver_params = {
             'sitekey': sitekey,
             'url': page_url
         }
-        print("[2Captcha] Solving WITHOUT proxy (avoids IP mismatch rejection)")
+        
+        # Parse and add proxy parameters if provided
+        if proxy_string:
+            try:
+                # Parse proxy string: "user:pass@host:port"
+                if '@' in proxy_string:
+                    auth_part, server_part = proxy_string.split('@', 1)
+                    proxy_user, proxy_pass = auth_part.split(':', 1)
+                    proxy_host, proxy_port = server_part.split(':', 1)
+                    
+                    solver_params['proxy'] = {
+                        'type': 'HTTP',  # or 'SOCKS5' if using SOCKS proxy
+                        'address': proxy_host,
+                        'port': int(proxy_port),
+                        'login': proxy_user,
+                        'password': proxy_pass
+                    }
+                    print(f"[2Captcha] Using proxy for solver: {proxy_host}:{proxy_port}")
+                else:
+                    print("[2Captcha] ⚠ Invalid proxy format, solving without proxy")
+            except Exception as e:
+                print(f"[2Captcha] ⚠ Failed to parse proxy: {e}, solving without proxy")
+        else:
+            print("[2Captcha] Solving WITHOUT proxy (no proxy provided)")
         
         # Submit and wait for solution (SDK handles polling automatically)
         start_time = time.time()
@@ -1360,59 +1383,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     pass
                 return False
 
-            # Type credentials and submit
-            print("[Login] Solving pre-login CAPTCHAs...")
-            
-            # Try 2Captcha with extended timeout for image challenges
-            # NOTE: auto_submit=False because we need to enter credentials BEFORE submitting
-            try:
-                _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=False)
-            except Exception:
-                pass
-            
-            # CRITICAL: Wait for CAPTCHA validation to complete on Google's side
-            # After injecting the solution, we need to wait for the visual checkmark to appear
-            print("[Login] Waiting for reCAPTCHA validation to complete...")
-            sb.sleep(5.0 + random.random() * 2.0)  # Give Google time to validate the solution
-            
-            # Verify the CAPTCHA was actually solved (optional but recommended)
-            try:
-                # Check if the CAPTCHA badge shows success
-                check_js = """
-                    (function() {
-                        // Check if any textarea has a value (solution was injected)
-                        var textareas = document.querySelectorAll('textarea[name="g-recaptcha-response"]');
-                        for (var i = 0; i < textareas.length; i++) {
-                            if (textareas[i].value && textareas[i].value.length > 50) {
-                                return 'CAPTCHA_SOLUTION_PRESENT';
-                            }
-                        }
-                        return 'NO_SOLUTION';
-                    })();
-                """
-                validation_status = sb.execute_script(check_js)
-                print(f"[Login] CAPTCHA validation status: {validation_status}")
-            except Exception as e:
-                print(f"[Login] Could not verify CAPTCHA status: {e}")
-            
-            try:
-                _bypass_turnstile_if_present(sb, 20)
-            except Exception:
-                pass
-            try:
-                _try_uc_gui_click_captcha(sb, 45)
-            except Exception:
-                pass
-            try:
-                _solve_cloudflare_checkbox(sb, 60)
-            except Exception:
-                pass
-            try:
-                _humanize_session(sb, 6)
-            except Exception:
-                pass
-            
-            # CHANGED: Slow, human-like typing with better error handling
+            # STEP 1: Enter credentials first (NO CAPTCHA solving yet)
             print("[Login] Entering credentials...")
             sb.sleep(0.5 + random.random())
             
@@ -1506,8 +1477,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 print(f"[Login] CAPTCHA solving attempt {attempt + 1}/3")
                 
                 # First, try 2Captcha API service (best for reCAPTCHA, handles image challenges)
+                # CRITICAL: Pass proxy_string so 2Captcha uses the same IP as the browser
                 try:
-                    if _solve_recaptcha_with_2captcha(sb, 180):  # 3 minutes for image challenges
+                    if _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=True, proxy_string=proxy_string):  # 3 minutes for image challenges
                         print("[Login] ✓ 2Captcha solved the CAPTCHA!")
                         # Wait and check for redirect multiple times (form may take time to process)
                         for check_attempt in range(10):
