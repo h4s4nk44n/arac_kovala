@@ -735,6 +735,91 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
 
     return False
 
+def _solve_recaptcha_with_buster(sb, max_wait_seconds: int = 120) -> bool:
+    """
+    Use Buster extension to solve reCAPTCHA/hCaptcha challenges.
+    Buster works by clicking the audio challenge button and solving it automatically.
+    Returns True if CAPTCHA appears to be solved, False otherwise.
+    """
+    print("[Buster] Looking for reCAPTCHA/hCaptcha challenges...")
+    
+    def _captcha_present() -> bool:
+        try:
+            # Check for reCAPTCHA iframe
+            recaptcha_frames = sb.find_elements('css selector', 
+                'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[title*="reCAPTCHA"]')
+            if recaptcha_frames:
+                return True
+            
+            # Check for CAPTCHA challenge text
+            html = (sb.get_page_source() or '').lower()
+            return any(word in html for word in ['recaptcha', 'hcaptcha', 'captcha', 'doğrulama'])
+        except Exception:
+            return False
+    
+    def _captcha_solved() -> bool:
+        try:
+            # Check if still showing CAPTCHA
+            html = (sb.get_page_source() or '').lower()
+            # If these challenge indicators are gone, likely solved
+            still_showing = any(word in html for word in ['recaptcha', 'hcaptcha', 'robot değilim', 'i\'m not a robot'])
+            return not still_showing
+        except Exception:
+            return False
+    
+    if not _captcha_present():
+        print("[Buster] No CAPTCHA detected")
+        return False
+    
+    print("[Buster] CAPTCHA detected, attempting to solve...")
+    start = time.time()
+    
+    # Give Buster extension time to detect and start solving
+    sb.sleep(2.0)
+    
+    # Try to find and click the Buster solve button if visible
+    try:
+        # Buster adds a button to the page when it detects CAPTCHA
+        # Look for the Buster icon/button (it may be in an iframe or on the main page)
+        buster_selectors = [
+            'button[id*="buster"]',
+            'div[id*="buster"]',
+            'img[alt*="Buster"]',
+            '[class*="buster"]',
+        ]
+        
+        for selector in buster_selectors:
+            try:
+                if sb.is_element_present(selector):
+                    print(f"[Buster] Found Buster button: {selector}")
+                    sb.click(selector)
+                    print("[Buster] Clicked Buster solve button")
+                    break
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[Buster] Could not click Buster button: {e}")
+    
+    # Wait for Buster to solve the CAPTCHA (can take 30-90 seconds)
+    print("[Buster] Waiting for Buster to solve CAPTCHA (this may take 1-2 minutes)...")
+    
+    while time.time() - start < max_wait_seconds:
+        if _captcha_solved():
+            elapsed = int(time.time() - start)
+            print(f"[Buster] ✓ CAPTCHA appears solved after {elapsed}s")
+            return True
+        
+        # Check progress every 5 seconds
+        sb.sleep(5.0)
+        
+        # Log progress
+        elapsed = int(time.time() - start)
+        if elapsed % 15 == 0:
+            print(f"[Buster] Still solving... ({elapsed}s elapsed)")
+    
+    print(f"[Buster] ⚠ CAPTCHA not solved after {max_wait_seconds}s")
+    return False
+
 def build_brightdata_proxy_string(country_code="tr", session_id=None):
     """
     Returns PROXY_STRING in the format: username:password@host:port
@@ -881,13 +966,29 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
         proxy_ext_dir = None
     
     try:
-        print(f"[Login] Starting proxy login session (uc=False, headless={_is_headless()})")
+        print(f"[Login] Starting proxy login session (uc=True, headless={_is_headless()})")
         
-        # Prepare Chrome args with extension
+        # Prepare Chrome args with extensions (proxy + Buster CAPTCHA solver)
         chrome_args = _get_chrome_args()
+        
+        # Add Buster CAPTCHA solver extension
+        buster_ext_dir = os.path.join(os.path.dirname(__file__), "buster_chrome")
+        if os.path.exists(buster_ext_dir):
+            print(f"[Login] ✓ Buster CAPTCHA solver extension found: {buster_ext_dir}")
+        else:
+            print(f"[Login] ⚠ Buster extension not found at {buster_ext_dir}")
+        
+        # Load both extensions: proxy auth + Buster
+        extensions_to_load = []
         if proxy_ext_dir:
-            chrome_args.append(f"--load-extension={proxy_ext_dir}")
-            chrome_args.append("--disable-extensions-except=" + proxy_ext_dir)
+            extensions_to_load.append(proxy_ext_dir)
+        if os.path.exists(buster_ext_dir):
+            extensions_to_load.append(buster_ext_dir)
+        
+        if extensions_to_load:
+            chrome_args.append(f"--load-extension={','.join(extensions_to_load)}")
+            chrome_args.append(f"--disable-extensions-except={','.join(extensions_to_load)}")
+            print(f"[Login] Loading {len(extensions_to_load)} Chrome extensions")
         
         with SB(
             uc=True,  # CHANGED: Use undetected mode for login
@@ -1043,6 +1144,13 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
 
             # Type credentials and submit
             print("[Login] Solving pre-login CAPTCHAs...")
+            
+            # Try Buster first for any reCAPTCHA/hCaptcha on login page
+            try:
+                _solve_recaptcha_with_buster(sb, 60)
+            except Exception:
+                pass
+            
             try:
                 _bypass_turnstile_if_present(sb, 20)
             except Exception:
@@ -1152,6 +1260,25 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             # Try multiple CAPTCHA solving attempts
             for attempt in range(3):
                 print(f"[Login] CAPTCHA solving attempt {attempt + 1}/3")
+                
+                # First, try Buster extension (best for reCAPTCHA/hCaptcha)
+                try:
+                    if _solve_recaptcha_with_buster(sb, 120):
+                        print("[Login] ✓ Buster solved the CAPTCHA!")
+                        # Give a moment for page to process
+                        sb.sleep(2.0)
+                        # Check if we're redirected
+                        try:
+                            current_url_check = sb.get_current_url().lower()
+                            if "giris" not in current_url_check and "login" not in current_url_check:
+                                print(f"[Login] ✓ Redirected away from login after Buster (URL: {current_url_check})")
+                                break
+                        except Exception:
+                            pass
+                except Exception as e:
+                    print(f"[Login] Buster error: {e}")
+                
+                # Fallback to other CAPTCHA solvers
                 try:
                     if _bypass_turnstile_if_present(sb, 60):
                         print("[Login] ✓ Turnstile bypassed")
