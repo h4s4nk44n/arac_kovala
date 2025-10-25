@@ -7,14 +7,11 @@ import uuid
 import json
 import os
 import re
-import json
 import random
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timezone
 import mimetypes
-from urllib.parse import urlsplit
- 
-import sys # Import sys to check the operating system
+import sys
 import secrets
 import requests
 
@@ -218,31 +215,51 @@ def _humanize_session(sb, moves: int = 10, dwell_time_sec=None):
 
 def _get_chrome_args() -> list:
     """
-    Chrome flags for container stability. Allows extra args via EXTRA_CHROME_ARGS
-    (comma-separated). Forces safer defaults for Railway (no-sandbox, shm fix).
+    Chrome flags for maximum stealth and container stability.
+    Allows extra args via EXTRA_CHROME_ARGS (comma-separated).
     """
     base = [
         "--no-sandbox",
         "--disable-dev-shm-usage",
+        "--disable-blink-features=AutomationControlled",  # CRITICAL: Hide automation
         "--disable-gpu",
         "--disable-software-rasterizer",
-        "--disable-features=Translate",
+        "--disable-features=IsolateOrigins,site-per-process",  # Reduce detection surface
+        "--disable-site-isolation-trials",
         "--no-first-run",
         "--no-default-browser-check",
         "--remote-allow-origins=*",
         "--disable-backgrounding-occluded-windows",
-        "--disable-extensions",
-        "--disable-component-extensions-with-background-pages",
+        "--disable-renderer-backgrounding",
+        "--disable-background-timer-throttling",
+        "--disable-background-networking",
+        "--disable-client-side-phishing-detection",
+        "--disable-hang-monitor",
+        "--disable-popup-blocking",
+        "--disable-prompt-on-repost",
+        "--disable-sync",
+        "--disable-translate",
+        "--metrics-recording-only",
+        "--safebrowsing-disable-auto-update",
+        "--password-store=basic",
+        "--use-mock-keychain",
+        "--lang=tr-TR",
+        "--window-size=1920,1080",
+        # Realistic user agent will be set via CDP
     ]
-    # Add headless flag if requested via env
+    
+    # Headless mode if requested (new headless mode is more stealthy)
     if _env_true("HEADLESS", "0"):
         base.append("--headless=new")
+    
+    # Add user-provided extra args
     extra = (os.getenv("EXTRA_CHROME_ARGS") or "").strip()
     if extra:
         for token in [t.strip() for t in extra.split(",") if t.strip()]:
             if token and token not in base:
                 base.append(token)
-    print(f"Chrome args: {base}")
+    
+    print(f"Chrome args: {' '.join(base[:5])}... ({len(base)} total)")
     return base
 
 def _is_headless() -> bool:
@@ -315,80 +332,194 @@ def _verify_chrome_binary():
 
 def _realistic_user_agent() -> str:
     """
-    Return a modern desktop Chrome UA. Can be overridden via BROWSER_UA env.
-    Defaults to a UA aligned with Chrome 141 series (matches undetected driver log).
+    Return a modern desktop Chrome UA matching the actual Chrome version.
+    Can be overridden via BROWSER_UA env.
     """
     ua_env = os.getenv("BROWSER_UA")
     if ua_env:
         return ua_env.strip()
+    # Match the actual Chrome stable version (check google-chrome --version)
     return (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/141.0.7390.78 Safari/537.36"
+        "Chrome/131.0.0.0 Safari/537.36"
     )
 
 def _apply_stealth(sb):
     """
-    Apply a set of stealth tweaks via Chrome DevTools to look like a real user.
-    - UA and Accept-Language
-    - Timezone to Europe/Istanbul
-    - navigator.* properties common to real desktops
+    Apply comprehensive stealth tweaks to make the browser indistinguishable from a real user.
+    - Turkish locale and timezone
+    - Hide all automation signals
+    - Realistic navigator properties
+    - WebGL/Canvas fingerprint protection
     """
     try:
-        # User-Agent and language
         ua = _realistic_user_agent()
+        
+        # Enable network interception
         try:
             sb.driver.execute_cdp_cmd("Network.enable", {})
         except Exception:
             pass
+        
+        # Set realistic headers
         try:
             sb.driver.execute_cdp_cmd(
                 "Network.setExtraHTTPHeaders",
-                {"headers": {"Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"}},
+                {"headers": {
+                    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Cache-Control": "max-age=0",
+                    "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+                    "Sec-Ch-Ua-Mobile": "?0",
+                    "Sec-Ch-Ua-Platform": '"Windows"',
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1",
+                    "Upgrade-Insecure-Requests": "1",
+                }},
             )
         except Exception:
             pass
+        
+        # Override user agent
         try:
             sb.driver.execute_cdp_cmd(
                 "Emulation.setUserAgentOverride",
-                {"userAgent": ua, "acceptLanguage": "tr-TR", "platform": "Windows"},
+                {
+                    "userAgent": ua,
+                    "acceptLanguage": "tr-TR,tr",
+                    "platform": "Win32",
+                    "userAgentMetadata": {
+                        "brands": [
+                            {"brand": "Google Chrome", "version": "131"},
+                            {"brand": "Chromium", "version": "131"},
+                            {"brand": "Not_A Brand", "version": "24"}
+                        ],
+                        "fullVersion": "131.0.0.0",
+                        "platform": "Windows",
+                        "platformVersion": "10.0.0",
+                        "architecture": "x86",
+                        "model": "",
+                        "mobile": False,
+                    }
+                },
             )
         except Exception:
             pass
 
-        # Timezone
+        # Set Turkish timezone
         try:
             sb.driver.execute_cdp_cmd(
                 "Emulation.setTimezoneOverride", {"timezoneId": "Europe/Istanbul"}
             )
         except Exception:
             pass
+        
+        # Set realistic geolocation (Istanbul)
+        try:
+            sb.driver.execute_cdp_cmd("Emulation.setGeolocationOverride", {
+                "latitude": 41.0082,
+                "longitude": 28.9784,
+                "accuracy": 100
+            })
+        except Exception:
+            pass
 
-        # Hide automation and set common navigator properties
+        # CRITICAL: Comprehensive anti-detection script
         stealth_js = """
+            // Remove webdriver flag
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'languages', {get: () => ['tr-TR','tr','en-US','en']});
+            delete navigator.__proto__.webdriver;
+            
+            // Set realistic navigator properties
+            Object.defineProperty(navigator, 'languages', {get: () => ['tr-TR', 'tr', 'en-US', 'en']});
+            Object.defineProperty(navigator, 'language', {get: () => 'tr-TR'});
             Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+            Object.defineProperty(navigator, 'vendor', {get: () => 'Google Inc.'});
             Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
-            // Fake plugins length
-            Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
-            // WebGL vendor/renderer shim
+            Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 0});
+            
+            // Fake realistic plugins
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => {
+                    const plugins = [
+                        {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format'},
+                        {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: ''},
+                        {name: 'Native Client', filename: 'internal-nacl-plugin', description: ''}
+                    ];
+                    plugins.__proto__ = PluginArray.prototype;
+                    return plugins;
+                }
+            });
+            
+            // Override permissions
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                    Promise.resolve({state: Notification.permission}) :
+                    originalQuery(parameters)
+            );
+            
+            // WebGL vendor/renderer spoofing (realistic Intel GPU)
             const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter){
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
                 if (parameter === 37445) { return 'Intel Inc.'; } // UNMASKED_VENDOR_WEBGL
-                if (parameter === 37446) { return 'Intel(R) UHD Graphics 620'; } // UNMASKED_RENDERER_WEBGL
+                if (parameter === 37446) { return 'Intel Iris OpenGL Engine'; } // UNMASKED_RENDERER_WEBGL
                 return getParameter.apply(this, arguments);
             };
+            
+            // Canvas fingerprint noise (subtle randomization)
+            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+            HTMLCanvasElement.prototype.toDataURL = function(type) {
+                const context = this.getContext('2d');
+                if (context) {
+                    const imageData = context.getImageData(0, 0, this.width, this.height);
+                    for (let i = 0; i < imageData.data.length; i += 4) {
+                        // Add minimal noise (undetectable to human eye)
+                        imageData.data[i] += Math.floor(Math.random() * 2);
+                        imageData.data[i+1] += Math.floor(Math.random() * 2);
+                        imageData.data[i+2] += Math.floor(Math.random() * 2);
+                    }
+                    context.putImageData(imageData, 0, 0);
+                }
+                return originalToDataURL.apply(this, arguments);
+            };
+            
+            // Hide automation-related properties
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+            
+            // Chrome runtime
+            window.chrome = {
+                runtime: {},
+                loadTimes: function() {},
+                csi: function() {},
+                app: {}
+            };
+            
+            // Screen properties (realistic 1080p)
+            Object.defineProperty(window.screen, 'width', {get: () => 1920});
+            Object.defineProperty(window.screen, 'height', {get: () => 1080});
+            Object.defineProperty(window.screen, 'availWidth', {get: () => 1920});
+            Object.defineProperty(window.screen, 'availHeight', {get: () => 1040});
+            Object.defineProperty(window.screen, 'colorDepth', {get: () => 24});
+            Object.defineProperty(window.screen, 'pixelDepth', {get: () => 24});
         """
+        
         try:
             sb.driver.execute_cdp_cmd(
                 "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_js}
             )
         except Exception:
             pass
-    except Exception:
-        pass
+            
+    except Exception as e:
+        print(f"Stealth application warning: {e}")
 
 def _bypass_turnstile_if_present(sb, max_wait_seconds: int = 40) -> bool:
     """
@@ -755,12 +886,12 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             chrome_args.append("--disable-extensions-except=" + proxy_ext_dir)
         
         with SB(
-            uc=False,
+            uc=True,  # CHANGED: Use undetected mode for login
             headless=_is_headless(),
             xvfb=True,
             agent=_realistic_user_agent(),
             locale_code="tr-TR",
-            window_size="1600,900",
+            window_size="1920,1080",
             user_data_dir=_get_chrome_profile_dir(),
             chromium_arg=",".join(chrome_args),
         ) as sb:
@@ -1487,7 +1618,9 @@ def _scrape_loop(poll_seconds: int = 60):
     
     while not STOP_EVENT.is_set():
         try:
-            with STATE_LOCK: items = list(FILTERS.values())
+            with STATE_LOCK: 
+                items = list(FILTERS.values())
+            
             if not items:
                 print("No filters configured. Scraper is idle.")
                 time.sleep(poll_seconds)
@@ -1496,86 +1629,87 @@ def _scrape_loop(poll_seconds: int = 60):
             for flt in items:
                 fid = flt['id']
                 url = flt['url']
-                with STATE_LOCK: known = KNOWN_IDS.setdefault(fid, set())
+                
+                with STATE_LOCK: 
+                    known = KNOWN_IDS.setdefault(fid, set())
 
                 need_login = False
                 current_ids, new_posts = set(), []
 
                 # 1) Try scraping WITHOUT proxy using existing cookies
                 try:
-                    # Use regular mode (uc=False) as fallback - more stable in containers
-                    # Our humanization stack (stealth, profile, mouse, proxy) makes it realistic enough
-                    print(f"[Scrape Loop] Starting browser session (uc=False, headless={_is_headless()})")
+                    print(f"[Scrape Loop] Starting browser session (uc=True, headless={_is_headless()})")
                     
                     with SB(
-                        uc=False,
+                        uc=True,  # Use undetected mode
                         headless=_is_headless(),
                         xvfb=True,
                         agent=_realistic_user_agent(),
                         locale_code="tr-TR",
-                        window_size="1600,900",
+                        window_size="1920,1080",
                         user_data_dir=_get_chrome_profile_dir(),
                         proxy=None,
                         chromium_arg=",".join(_get_chrome_args()),
                     ) as sb:
                         try:
                             sb.driver.execute_cdp_cmd(
-                            "Page.addScriptToEvaluateOnNewDocument",
-                            {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
-                        )
+                                "Page.addScriptToEvaluateOnNewDocument",
+                                {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
+                            )
                         except Exception:
                             pass
+                        
                         try:
                             _apply_stealth(sb)
                         except Exception:
                             pass
+                        
                         try:
                             sb.sleep(0.8 + random.random() * 0.8)
                             _humanize_session(sb, 8)
                         except Exception:
                             pass
+                        
                         try:
                             current_ids, new_posts = scrape_sahibinden(sb, url, known)
                         except NeedsLogin as e:
                             if "Rate limited" in str(e):
                                 print("Rate limit detected. Implementing backoff...")
-                                # Exponential backoff: start at 60s, double each time, max 600s (10 min)
                                 delay = retry_delays.get(fid, 60)
                                 delay = min(delay * 2, 600)
                                 retry_delays[fid] = delay
                                 print(f"Waiting {delay} seconds before next attempt for filter {fid}")
                                 time.sleep(delay)
-                                need_login = False  # Don't trigger proxy login for rate limits
-                                continue
+                                continue  # Skip to next filter
                             else:
                                 print("Cookie invalid; will refresh via proxy login.")
                                 need_login = True
-                                # Reset backoff on successful login
-                                retry_delays[fid] = 60
-                        except Exception as e:
-                            print("Scrape attempt failed:", e)
+                                retry_delays[fid] = 60  # Reset backoff
+                        
                 except Exception as e:
                     print(f"Non-proxy browser session failed: {e}")
                     import traceback
                     traceback.print_exc()
+                    need_login = True  # Try login on unexpected errors
 
-                # 2) If login needed, perform proxy-backed login and retry scraping without proxy
+                # 2) If login needed, perform proxy-backed login and retry scraping
                 if need_login:
                     success = login_with_proxy_and_save_cookies_with_retry(url, max_retries=3)
                     if not success:
                         print("Proxy login failed; skipping this filter this cycle.")
                         continue
+                    
                     # Retry scraping without proxy using the refreshed cookies
                     try:
-                        print(f"[Scrape Loop] Retry after login (uc=False, headless={_is_headless()})")
+                        print(f"[Scrape Loop] Retry after login (uc=True, headless={_is_headless()})")
                         
                         with SB(
-                            uc=False,
+                            uc=True,  # Keep uc mode for consistency
                             headless=_is_headless(),
                             xvfb=True,
                             agent=_realistic_user_agent(),
                             locale_code="tr-TR",
-                            window_size="1600,900",
+                            window_size="1920,1080",
                             user_data_dir=_get_chrome_profile_dir(),
                             proxy=None,
                             chromium_arg=",".join(_get_chrome_args()),
@@ -1587,65 +1721,73 @@ def _scrape_loop(poll_seconds: int = 60):
                                 )
                             except Exception:
                                 pass
+                            
                             try:
                                 _apply_stealth(sb)
                             except Exception:
                                 pass
+                            
                             try:
                                 sb.sleep(0.8 + random.random() * 0.8)
                                 _humanize_session(sb, 8)
                             except Exception:
                                 pass
+                            
                             try:
                                 current_ids, new_posts = scrape_sahibinden(sb, url, known)
                             except Exception as e:
                                 print("Scrape after login failed:", e)
                                 current_ids, new_posts = set(), []
+                    
                     except Exception as e:
                         print("Browser session after login failed:", e)
-                        
-                # 3) Persist results
-                        if new_posts:
-                            now_iso = datetime.now(timezone.utc).isoformat()
-                            for p in new_posts:
-                                p['discovered_at'] = now_iso
-                                p['filter_id'] = fid
-                                p['filter_name'] = flt.get('name')
-                            
-                            with STATE_LOCK:
-                                current_posts = POSTS.get(fid, [])
-                                combined_posts = new_posts + current_posts
-                                
-                                unique_posts = []
-                                seen_ids_in_list = set()
-                                for post in combined_posts:
-                                    if post['id'] not in seen_ids_in_list:
-                                        unique_posts.append(post)
-                                        seen_ids_in_list.add(post['id'])
-                                
-                                sorted_posts = sorted(unique_posts, key=lambda p: p.get('discovered_at', ''), reverse=True)
-                                POSTS[fid] = sorted_posts[:10]
-                                
-                                KNOWN_IDS[fid].update(p['id'] for p in new_posts)
+                        current_ids, new_posts = set(), []
 
-                            print(f"Found {len(new_posts)} new posts for filter '{flt.get('name')}'. List capped at 10. Sending notifications...")
-                            
-                            for post in new_posts:
-                                title = f"{post.get('title')}"
-                                body = f"Price: {post.get('price')}"
-                                send_push_notification(title, body, data={'url': post.get('url')})
+                # 3) Persist results (OUTSIDE try/except blocks)
+                if new_posts:
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    for p in new_posts:
+                        p['discovered_at'] = now_iso
+                        p['filter_id'] = fid
+                        p['filter_name'] = flt.get('name')
+                    
+                    with STATE_LOCK:
+                        current_posts = POSTS.get(fid, [])
+                        combined_posts = new_posts + current_posts
                         
-                        with STATE_LOCK:
-                            KNOWN_IDS[fid].update(current_ids)
+                        unique_posts = []
+                        seen_ids_in_list = set()
+                        for post in combined_posts:
+                            if post['id'] not in seen_ids_in_list:
+                                unique_posts.append(post)
+                                seen_ids_in_list.add(post['id'])
                         
-                        _save_data_to_disk()
+                        sorted_posts = sorted(unique_posts, key=lambda p: p.get('discovered_at', ''), reverse=True)
+                        POSTS[fid] = sorted_posts[:10]
+                        
+                        KNOWN_IDS[fid].update(p['id'] for p in new_posts)
 
-                print("SB session(s) for this filter have been closed.")
+                    print(f"Found {len(new_posts)} new posts for filter '{flt.get('name')}'. Sending notifications...")
+                    
+                    for post in new_posts:
+                        title = post.get('title', 'New Car')
+                        body = f"Price: {post.get('price', 'N/A')}"
+                        send_push_notification(title, body, data={'url': post.get('url')})
+                
+                # Always update known IDs
+                with STATE_LOCK:
+                    KNOWN_IDS[fid].update(current_ids)
+                
+                _save_data_to_disk()
+                print(f"✓ Filter '{flt.get('name')}' processing complete.")
 
-            print(f"Scrape cycle complete. Waiting for {poll_seconds} seconds...")
+            print(f"Scrape cycle complete. Waiting {poll_seconds} seconds...")
             time.sleep(poll_seconds)
+            
         except Exception as e:
             print(f"Loop error: {e}")
+            import traceback
+            traceback.print_exc()
             time.sleep(poll_seconds)
 
     print("Scraper loop stopped.")
