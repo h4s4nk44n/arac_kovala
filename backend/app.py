@@ -838,34 +838,14 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         # Prepare solver parameters and submit using official SDK
         print("[2Captcha] Submitting CAPTCHA to 2Captcha service (via official SDK)...")
         
+        # CRITICAL: Do NOT send proxy to 2Captcha workers
+        # Proxy creates IP mismatch between solver and browser, causing Google to reject the solution
+        # Let workers solve from their own IPs - the solution will work universally
         solver_params = {
             'sitekey': sitekey,
             'url': page_url
         }
-        
-        # Add proxy if available (so 2Captcha uses same IP as our browser)
-        iproyal_host = (os.getenv("IPROYAL_PROXY") or "").strip()
-        iproyal_auth = (os.getenv("IPROYAL_PROXY_AUTH") or "").strip()
-        if iproyal_host and iproyal_auth:
-            try:
-                # Parse proxy auth (username:password)
-                if ':' in iproyal_auth:
-                    parts = iproyal_auth.split(':', 1)
-                    proxy_user = parts[0]
-                    proxy_pass = parts[1]
-                else:
-                    proxy_user = iproyal_auth
-                    proxy_pass = ""
-                
-                # Build proxy dict for SDK
-                solver_params['proxy'] = {
-                    'type': 'HTTP',
-                    'uri': f"{proxy_user}:{proxy_pass}@{iproyal_host}"
-                }
-                solver_params['userAgent'] = _realistic_user_agent()
-                print(f"[2Captcha] Using proxy for solver: {iproyal_host}")
-            except Exception as e:
-                print(f"[2Captcha] Proxy config warning: {e}")
+        print("[2Captcha] Solving WITHOUT proxy (avoids IP mismatch rejection)")
         
         # Submit and wait for solution (SDK handles polling automatically)
         start_time = time.time()
