@@ -2493,13 +2493,21 @@ def bootstrap():
 _BOOTSTRAPPED = False
 _BOOTSTRAP_LOCK = threading.Lock()
 
-# Bootstrap immediately when module is imported (by Gunicorn or directly)
-# This runs in the background and doesn't block app startup
-print("=== Module imported, starting bootstrap ===")
-bootstrap()
+# DO NOT bootstrap on module import - let it happen lazily on first request
+# This ensures Gunicorn workers start immediately and respond to health checks
+
+@app.before_request
+def lazy_bootstrap():
+    """Lazy bootstrap: only initialize on first real request (after health checks pass)"""
+    # Skip bootstrap for health check to allow Railway to verify app is running
+    if request.path == '/health':
+        return
+    
+    # Start bootstrap in background (non-blocking)
+    bootstrap()
 
 if __name__ == "__main__":
-    print("--- Initialization Complete. Starting Flask Dev Server. ---")
+    print("--- Starting Flask Dev Server. ---")
     # This part is for local development only. Gunicorn is used in production.
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
