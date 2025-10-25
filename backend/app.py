@@ -22,6 +22,10 @@ PUSH_TOKENS = set()
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
 HTML_SNAPSHOTS_DIR = os.path.join(os.path.dirname(__file__), 'html_snapshots')
 
+# Ensure diagnostic directories exist
+os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+os.makedirs(HTML_SNAPSHOTS_DIR, exist_ok=True)
+
 DATA_DIR = os.getenv('RAILWAY_VOLUME_MOUNT_PATH', os.path.dirname(__file__))
 print(f"Using data directory: {DATA_DIR}")
 os.makedirs(DATA_DIR, exist_ok=True) # Ensure the directory exists
@@ -1142,20 +1146,40 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             print("[Login] Waiting for post-login response...")
             sb.sleep(3.0)  # Initial wait for server response
             
-            # Solve any post-login CAPTCHAs
-            print("[Login] Solving post-login CAPTCHAs...")
-            try:
-                _bypass_turnstile_if_present(sb, 30)
-            except Exception:
-                pass
-            try:
-                _try_uc_gui_click_captcha(sb, 45)
-            except Exception:
-                pass
-            try:
-                _solve_cloudflare_checkbox(sb, 60)
-            except Exception:
-                pass
+            # Solve any post-login CAPTCHAs (AGGRESSIVE - increase wait times)
+            print("[Login] Solving post-login CAPTCHAs (this may take 1-2 minutes)...")
+            
+            # Try multiple CAPTCHA solving attempts
+            for attempt in range(3):
+                print(f"[Login] CAPTCHA solving attempt {attempt + 1}/3")
+                try:
+                    if _bypass_turnstile_if_present(sb, 60):
+                        print("[Login] ✓ Turnstile bypassed")
+                except Exception as e:
+                    print(f"[Login] Turnstile bypass error: {e}")
+                
+                try:
+                    if _try_uc_gui_click_captcha(sb, 90):
+                        print("[Login] ✓ GUI CAPTCHA clicked")
+                except Exception as e:
+                    print(f"[Login] GUI CAPTCHA error: {e}")
+                
+                try:
+                    if _solve_cloudflare_checkbox(sb, 90):
+                        print("[Login] ✓ Cloudflare checkbox solved")
+                except Exception as e:
+                    print(f"[Login] Cloudflare checkbox error: {e}")
+                
+                # Check if we're still on login page
+                try:
+                    current_url_check = sb.get_current_url().lower()
+                    if "giris" not in current_url_check and "login" not in current_url_check:
+                        print(f"[Login] ✓ Redirected away from login (URL: {current_url_check})")
+                        break
+                except Exception:
+                    pass
+                
+                sb.sleep(2.0)  # Small pause between attempts
             
             # Basic validation: still on login?
             def _still_on_login() -> bool:
@@ -1170,14 +1194,20 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 except Exception:
                     return False
             
-            # Wait for redirect (up to 10 seconds)
+            # Wait for redirect (up to 20 seconds - increased from 10)
             print("[Login] Checking for redirect...")
-            max_wait = 10
+            max_wait = 20
             start_wait = time.time()
+            redirect_detected = False
             while time.time() - start_wait < max_wait:
                 if not _still_on_login():
+                    redirect_detected = True
+                    print(f"[Login] ✓ Redirect detected after {int(time.time() - start_wait)}s")
                     break
                 sb.sleep(0.5)
+            
+            if not redirect_detected:
+                print(f"[Login] ⚠ No redirect after {max_wait}s")
             
             # Check login result and save diagnostics if failed
             current_url_after = ""
