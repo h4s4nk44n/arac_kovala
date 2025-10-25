@@ -855,12 +855,11 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
                     proxy_user, proxy_pass = auth_part.split(':', 1)
                     proxy_host, proxy_port = server_part.split(':', 1)
                     
+                    # 2Captcha Python SDK proxy format (from official docs)
+                    # proxy={'type': 'HTTP', 'uri': 'login:password@IP_address:PORT'}
                     solver_params['proxy'] = {
-                        'type': 'HTTP',  # or 'SOCKS5' if using SOCKS proxy
-                        'address': proxy_host,
-                        'port': int(proxy_port),
-                        'login': proxy_user,
-                        'password': proxy_pass
+                        'type': 'HTTP',
+                        'uri': f'{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}'
                     }
                     print(f"[2Captcha] Using proxy for solver: {proxy_host}:{proxy_port}")
                 else:
@@ -998,69 +997,66 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
                 print(f"[2Captcha] ❌ Injection failed: {error}")
                 
         except Exception as e:
-            print(f"[2Captcha] Injection script error: {e}")
-            
-            # CRITICAL: Wait for reCAPTCHA to validate the solution (visual checkmark appears)
-            print("[2Captcha] Waiting for reCAPTCHA validation (3-5 seconds)...")
-            sb.sleep(3.0 + random.random() * 2.0)  # 3-5 seconds for validation
-            
-            # Save a diagnostic snapshot AFTER injection
+            print(f"[2Captcha] ❌ Injection script exception: {e}")
+        
+        # CRITICAL: Wait for reCAPTCHA to validate the solution (visual checkmark appears)
+        # This must happen AFTER injection regardless of success/failure
+        print("[2Captcha] Waiting for reCAPTCHA validation (3-5 seconds)...")
+        sb.sleep(3.0 + random.random() * 2.0)  # 3-5 seconds for validation
+        
+        # Save a diagnostic snapshot AFTER injection
+        try:
+            ts_post = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            shot_post = os.path.join(SCREENSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.png")
+            sb.save_screenshot(shot_post)
+            html_post_path = os.path.join(HTML_SNAPSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.html")
             try:
-                ts_post = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                shot_post = os.path.join(SCREENSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.png")
-                sb.save_screenshot(shot_post)
-                html_post_path = os.path.join(HTML_SNAPSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.html")
+                with open(html_post_path, 'w', encoding='utf-8') as f:
+                    f.write(sb.get_page_source())
+            except Exception:
                 try:
                     with open(html_post_path, 'w', encoding='utf-8') as f:
-                        f.write(sb.get_page_source())
+                        f.write(sb.driver.page_source)
                 except Exception:
+                    pass
+            print(f"[2Captcha] Saved post-inject diagnostics: {shot_post}, {html_post_path}")
+        except Exception:
+            pass
+        
+        # Auto-submit the form after CAPTCHA solution (if enabled)
+        if auto_submit:
+            print("[2Captcha] Auto-submitting form after solution...")
+            try:
+                # Try to find and click the submit button
+                submit_selectors = [
+                    "#userLoginSubmitButton",
+                    "button[type='submit']",
+                    "input[type='submit']",
+                    "button.submit",
+                    ".submit-button"
+                ]
+                
+                submitted = False
+                for sel in submit_selectors:
                     try:
-                        with open(html_post_path, 'w', encoding='utf-8') as f:
-                            f.write(sb.driver.page_source)
+                        if sb.is_element_present(sel):
+                            sb.execute_script(f"document.querySelector('{sel}').click();")
+                            print(f"[2Captcha] Clicked submit button: {sel}")
+                            submitted = True
+                            break
                     except Exception:
-                        pass
-                print(f"[2Captcha] Saved post-inject diagnostics: {shot_post}, {html_post_path}")
-            except Exception:
-                pass
-            
-            # Auto-submit the form after CAPTCHA solution (if enabled)
-            if auto_submit:
-                print("[2Captcha] Auto-submitting form after solution...")
-                try:
-                    # Try to find and click the submit button
-                    submit_selectors = [
-                        "#userLoginSubmitButton",
-                        "button[type='submit']",
-                        "input[type='submit']",
-                        "button.submit",
-                        ".submit-button"
-                    ]
-                    
-                    submitted = False
-                    for sel in submit_selectors:
-                        try:
-                            if sb.is_element_present(sel):
-                                sb.execute_script(f"document.querySelector('{sel}').click();")
-                                print(f"[2Captcha] Clicked submit button: {sel}")
-                                submitted = True
-                                break
-                        except Exception:
-                            continue
-                    
-                    if not submitted:
-                        print("[2Captcha] ⚠ No submit button found for auto-submit")
-                    
-                    sb.sleep(1.5)
-                except Exception as e:
-                    print(f"[2Captcha] Auto-submit error: {e}")
-            else:
-                print("[2Captcha] Skipping auto-submit (disabled)")
-            
-            return True
-            
-        except Exception as e:
-            print(f"[2Captcha] Injection error: {e}")
-            return False
+                        continue
+                
+                if not submitted:
+                    print("[2Captcha] ⚠ No submit button found for auto-submit")
+                
+                sb.sleep(1.5)
+            except Exception as e:
+                print(f"[2Captcha] Auto-submit error: {e}")
+        else:
+            print("[2Captcha] Skipping auto-submit (disabled)")
+        
+        return True
         
     except Exception as e:
         print(f"[2Captcha] Error: {e}")
