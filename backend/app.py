@@ -2493,14 +2493,12 @@ def bootstrap():
 _BOOTSTRAPPED = False
 _BOOTSTRAP_LOCK = threading.Lock()
 
-# When imported by Gunicorn (not __main__), Gunicorn calls the 'app' object.
-# We need to ensure bootstrap() is called before the first request.
-@app.before_request
-def before_request_func():
-    bootstrap()
+# Bootstrap immediately when module is imported (by Gunicorn or directly)
+# This runs in the background and doesn't block app startup
+print("=== Module imported, starting bootstrap ===")
+bootstrap()
 
 if __name__ == "__main__":
-    bootstrap()
     print("--- Initialization Complete. Starting Flask Dev Server. ---")
     # This part is for local development only. Gunicorn is used in production.
     port = int(os.environ.get("PORT", 8080))
