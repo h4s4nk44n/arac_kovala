@@ -14,6 +14,7 @@ import mimetypes
 import sys
 import secrets
 import requests
+from twocaptcha import TwoCaptcha
 
 
 
@@ -737,7 +738,7 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
 
 def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit: bool = True) -> bool:
     """
-    Use 2Captcha API service to solve reCAPTCHA v2/v3 challenges (including image challenges).
+    Use 2Captcha API service (official SDK) to solve reCAPTCHA v2/v3 challenges (including image challenges).
     Requires TWOCAPTCHA_API_KEY environment variable.
     
     Args:
@@ -754,6 +755,9 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         return False
     
     print("[2Captcha] Looking for reCAPTCHA challenge...")
+    
+    # Initialize 2Captcha solver
+    solver = TwoCaptcha(api_key)
     
     try:
         # Switch to default content to search for reCAPTCHA
@@ -831,137 +835,104 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         except Exception:
             pass
         
-        print(f"[2Captcha] Detected CAPTCHA type: {'invisible' if is_invisible else 'visible'}")
+        # Prepare solver parameters and submit using official SDK
+        print("[2Captcha] Submitting CAPTCHA to 2Captcha service (via official SDK)...")
         
-        # Submit CAPTCHA to 2Captcha API
-        print("[2Captcha] Submitting CAPTCHA to 2Captcha service...")
-        submit_url = "http://2captcha.com/in.php"
-        submit_params = {
-            'key': api_key,
-            'method': 'userrecaptcha',
-            'googlekey': sitekey,
-            'pageurl': page_url,
-            'json': 1
+        solver_params = {
+            'sitekey': sitekey,
+            'url': page_url
         }
         
-        # Only set invisible flag if actually invisible
-        if is_invisible:
-            submit_params['invisible'] = 1
-
-        # If we are using an authenticated proxy (IPROYAL_*), instruct 2Captcha to use it
+        # Add proxy if available (so 2Captcha uses same IP as our browser)
         iproyal_host = (os.getenv("IPROYAL_PROXY") or "").strip()
         iproyal_auth = (os.getenv("IPROYAL_PROXY_AUTH") or "").strip()
         if iproyal_host and iproyal_auth:
             try:
-                # iproyal_host is like host:port
-                submit_params['proxy'] = iproyal_host
-                submit_params['proxytype'] = 'HTTP'
-                # parse auth (username:password...); password may contain ':' so join the tail
+                # Parse proxy auth (username:password)
                 if ':' in iproyal_auth:
-                    parts = iproyal_auth.split(':')
-                    submit_params['proxy_login'] = parts[0]
-                    submit_params['proxy_pass'] = ':'.join(parts[1:])
+                    parts = iproyal_auth.split(':', 1)
+                    proxy_user = parts[0]
+                    proxy_pass = parts[1]
                 else:
-                    submit_params['proxy_login'] = iproyal_auth
-                # Include a realistic user agent so 2Captcha uses same UA when fetching challenge
-                submit_params['userAgent'] = _realistic_user_agent()
-                print(f"[2Captcha] Using proxy for solver: {iproyal_host} (auth provided)")
-            except Exception:
-                pass
-
-        proxies = _get_iproyal_requests_proxies()
-
+                    proxy_user = iproyal_auth
+                    proxy_pass = ""
+                
+                # Build proxy dict for SDK
+                solver_params['proxy'] = {
+                    'type': 'HTTP',
+                    'uri': f"{proxy_user}:{proxy_pass}@{iproyal_host}"
+                }
+                solver_params['userAgent'] = _realistic_user_agent()
+                print(f"[2Captcha] Using proxy for solver: {iproyal_host}")
+            except Exception as e:
+                print(f"[2Captcha] Proxy config warning: {e}")
+        
+        # Submit and wait for solution (SDK handles polling automatically)
+        start_time = time.time()
         try:
-            response = requests.post(submit_url, data=submit_params, timeout=30, proxies=proxies)
-            result = response.json()
+            print("[2Captcha] Waiting for solution (image challenges may take 60-120 seconds)...")
+            result = solver.recaptcha(**solver_params)
             
-            if result.get('status') != 1:
-                error_text = result.get('request', 'Unknown error')
-                print(f"[2Captcha] ❌ Submit failed: {error_text}")
-                return False
-            
-            captcha_id = result.get('request')
-            print(f"[2Captcha] ✓ CAPTCHA submitted, ID: {captcha_id}")
+            elapsed = int(time.time() - start_time)
+            captcha_solution = result['code']
+            print(f"[2Captcha] ✓ Solution received after {elapsed}s")
             
         except Exception as e:
-            print(f"[2Captcha] Submit request failed: {e}")
+            elapsed = int(time.time() - start_time)
+            print(f"[2Captcha] ❌ Failed to get solution after {elapsed}s: {e}")
             return False
         
-        # Poll for solution (typically takes 30-60 seconds, image challenges can take 60-120s)
-        print("[2Captcha] Waiting for solution (image challenges may take 60-120 seconds)...")
-        result_url = "http://2captcha.com/res.php"
-        start = time.time()
-        poll_delay = 5  # Check every 5 seconds
+        # OLD HTTP API CODE REMOVED - NOW USING SDK ABOVE
         
-        while time.time() - start < max_wait_seconds:
-            sb.sleep(poll_delay)
-            
-            try:
-                result_params = {
-                    'key': api_key,
-                    'action': 'get',
-                    'id': captcha_id,
-                    'json': 1
-                }
+        # Inject the solution into the page with proper callback triggering
+        print("[2Captcha] Injecting solution into page...")
+        
+        # CRITICAL: Properly inject solution and trigger ALL reCAPTCHA callbacks
+        inject_js = f"""
+            (function() {{
+                console.log('[2Captcha] Injecting solution...');
+                var solution = '{captcha_solution}';
                 
-                response = requests.get(result_url, params=result_params, timeout=30, proxies=proxies)
-                result = response.json()
+                // Step 1: Find and fill all g-recaptcha-response textareas
+                var textareas = document.querySelectorAll('[name="g-recaptcha-response"]');
+                console.log('[2Captcha] Found ' + textareas.length + ' textareas');
                 
-                if result.get('status') == 1:
-                    # Solution ready!
-                    captcha_solution = result.get('request')
-                    elapsed = int(time.time() - start)
-                    print(f"[2Captcha] ✓ Solution received after {elapsed}s")
+                textareas.forEach(function(textarea) {{
+                    textarea.innerHTML = solution;
+                    textarea.value = solution;
+                    textarea.style.display = 'block';
+                    console.log('[2Captcha] Filled textarea:', textarea.id || 'unnamed');
+                }});
+                
+                // Step 2: Trigger reCAPTCHA callbacks (CRITICAL!)
+                if (typeof ___grecaptcha_cfg !== 'undefined') {{
+                    console.log('[2Captcha] Triggering reCAPTCHA callbacks...');
+                    var clients = ___grecaptcha_cfg.clients;
+                    var callbacksTriggered = 0;
                     
-                    # Inject the solution into the page with proper callback triggering
-                    print("[2Captcha] Injecting solution into page...")
-                    
-                    # CRITICAL: Properly inject solution and trigger ALL reCAPTCHA callbacks
-                    inject_js = f"""
-                        (function() {{
-                            console.log('[2Captcha] Injecting solution...');
-                            var solution = '{captcha_solution}';
-                            
-                            // Step 1: Find and fill all g-recaptcha-response textareas
-                            var textareas = document.querySelectorAll('[name="g-recaptcha-response"]');
-                            console.log('[2Captcha] Found ' + textareas.length + ' textareas');
-                            
-                            textareas.forEach(function(textarea) {{
-                                textarea.innerHTML = solution;
-                                textarea.value = solution;
-                                textarea.style.display = 'block';
-                                console.log('[2Captcha] Filled textarea:', textarea.id || 'unnamed');
-                            }});
-                            
-                            // Step 2: Trigger reCAPTCHA callbacks (CRITICAL!)
-                            if (typeof ___grecaptcha_cfg !== 'undefined') {{
-                                console.log('[2Captcha] Triggering reCAPTCHA callbacks...');
-                                var clients = ___grecaptcha_cfg.clients;
-                                var callbacksTriggered = 0;
-                                
-                                for (var clientId in clients) {{
-                                    var client = clients[clientId];
-                                    
-                                    // Trigger data-callback function
-                                    if (client && client.callback) {{
-                                        try {{
-                                            if (typeof client.callback === 'string') {{
-                                                // Callback is a function name
-                                                if (typeof window[client.callback] === 'function') {{
-                                                    window[client.callback](solution);
-                                                    callbacksTriggered++;
-                                                    console.log('[2Captcha] Triggered callback: ' + client.callback);
-                                                }}
-                                            }} else if (typeof client.callback === 'function') {{
-                                                // Callback is a function reference
-                                                client.callback(solution);
-                                                callbacksTriggered++;
-                                                console.log('[2Captcha] Triggered function callback');
-                                            }}
-                                        }} catch (e) {{
-                                            console.error('[2Captcha] Callback error:', e);
-                                        }}
+                    for (var clientId in clients) {{
+                        var client = clients[clientId];
+                        
+                        // Trigger data-callback function
+                        if (client && client.callback) {{
+                            try {{
+                                if (typeof client.callback === 'string') {{
+                                    // Callback is a function name
+                                    if (typeof window[client.callback] === 'function') {{
+                                        window[client.callback](solution);
+                                        callbacksTriggered++;
+                                        console.log('[2Captcha] Triggered callback: ' + client.callback);
                                     }}
+                                }} else if (typeof client.callback === 'function') {{
+                                    // Callback is a function reference
+                                    client.callback(solution);
+                                    callbacksTriggered++;
+                                    console.log('[2Captcha] Triggered function callback');
+                                }}
+                            }} catch (e) {{
+                                console.error('[2Captcha] Callback error:', e);
+                            }}
+                        }}
                                     
                                     // Also try to trigger via the widget
                                     if (client && client.widgetId !== undefined) {{
@@ -986,97 +957,74 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
                                 var event = new Event('change', {{ bubbles: true }});
                                 textarea.dispatchEvent(event);
                             }});
-                            
-                            console.log('[2Captcha] Solution injection complete');
-                            return true;
-                        }})();
-                    """
-                    
-                    try:
-                        injection_result = sb.execute_script(inject_js)
-                        print(f"[2Captcha] ✓ Solution injected successfully (result: {injection_result})")
-                        sb.sleep(1.0)
-                        # Save a diagnostic snapshot AFTER injection
-                        try:
-                            ts_post = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                            shot_post = os.path.join(SCREENSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.png")
-                            sb.save_screenshot(shot_post)
-                            html_post_path = os.path.join(HTML_SNAPSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.html")
-                            try:
-                                with open(html_post_path, 'w', encoding='utf-8') as f:
-                                    f.write(sb.get_page_source())
-                            except Exception:
-                                try:
-                                    with open(html_post_path, 'w', encoding='utf-8') as f:
-                                        f.write(sb.driver.page_source)
-                                except Exception:
-                                    pass
-                            print(f"[2Captcha] Saved post-inject diagnostics: {shot_post}, {html_post_path}")
-                        except Exception:
-                            pass
                         
-                        # Auto-submit the form after CAPTCHA solution (if enabled)
-                        if auto_submit:
-                            print("[2Captcha] Auto-submitting form after solution...")
-                            try:
-                                # Try to find and click the submit button
-                                submit_selectors = [
-                                    "#userLoginSubmitButton",
-                                    "button[type='submit']",
-                                    "input[type='submit']",
-                                    "button.submit",
-                                    ".submit-button"
-                                ]
-                                
-                                submitted = False
-                                for sel in submit_selectors:
-                                    try:
-                                        if sb.is_element_present(sel):
-                                            sb.execute_script(f"document.querySelector('{sel}').click();")
-                                            print(f"[2Captcha] Clicked submit button: {sel}")
-                                            submitted = True
-                                            break
-                                    except Exception:
-                                        continue
-                                
-                                if not submitted:
-                                    # Try to submit the form directly
-                                    sb.execute_script("""
-                                        var forms = document.querySelectorAll('form');
-                                        if (forms.length > 0) {
-                                            forms[0].submit();
-                                        }
-                                    """)
-                                    print("[2Captcha] Submitted form directly")
-                                
-                                sb.sleep(2.0)  # Wait for form submission
-                            except Exception as e:
-                                print(f"[2Captcha] Auto-submit warning: {e}")
-                        else:
-                            print("[2Captcha] ✓ Solution injected (auto-submit disabled, form will be submitted manually)")
-                        
-                        return True
-                    except Exception as e:
-                        print(f"[2Captcha] Failed to inject solution: {e}")
-                        return False
-                
-                elif result.get('request') == 'CAPCHA_NOT_READY':
-                    elapsed = int(time.time() - start)
-                    if elapsed % 20 == 0:  # Print every 20s instead of 15s
-                        print(f"[2Captcha] Still waiting (image challenge solving)... ({elapsed}s elapsed)")
-                    continue
-                
-                else:
-                    error_text = result.get('request', 'Unknown error')
-                    print(f"[2Captcha] ❌ Error: {error_text}")
-                    return False
-                    
-            except Exception as e:
-                print(f"[2Captcha] Polling error: {e}")
-                continue
+                        console.log('[2Captcha] Solution injection complete');
+                        return true;
+                    }})();
+        """
         
-        print(f"[2Captcha] ⚠ Timeout after {max_wait_seconds}s")
-        return False
+        try:
+            injection_result = sb.execute_script(inject_js)
+            print(f"[2Captcha] ✓ Solution injected successfully")
+            sb.sleep(1.0)
+            
+            # Save a diagnostic snapshot AFTER injection
+            try:
+                ts_post = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                shot_post = os.path.join(SCREENSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.png")
+                sb.save_screenshot(shot_post)
+                html_post_path = os.path.join(HTML_SNAPSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.html")
+                try:
+                    with open(html_post_path, 'w', encoding='utf-8') as f:
+                        f.write(sb.get_page_source())
+                except Exception:
+                    try:
+                        with open(html_post_path, 'w', encoding='utf-8') as f:
+                            f.write(sb.driver.page_source)
+                    except Exception:
+                        pass
+                print(f"[2Captcha] Saved post-inject diagnostics: {shot_post}, {html_post_path}")
+            except Exception:
+                pass
+            
+            # Auto-submit the form after CAPTCHA solution (if enabled)
+            if auto_submit:
+                print("[2Captcha] Auto-submitting form after solution...")
+                try:
+                    # Try to find and click the submit button
+                    submit_selectors = [
+                        "#userLoginSubmitButton",
+                        "button[type='submit']",
+                        "input[type='submit']",
+                        "button.submit",
+                        ".submit-button"
+                    ]
+                    
+                    submitted = False
+                    for sel in submit_selectors:
+                        try:
+                            if sb.is_element_present(sel):
+                                sb.execute_script(f"document.querySelector('{sel}').click();")
+                                print(f"[2Captcha] Clicked submit button: {sel}")
+                                submitted = True
+                                break
+                        except Exception:
+                            continue
+                    
+                    if not submitted:
+                        print("[2Captcha] ⚠ No submit button found for auto-submit")
+                    
+                    sb.sleep(1.5)
+                except Exception as e:
+                    print(f"[2Captcha] Auto-submit error: {e}")
+            else:
+                print("[2Captcha] Skipping auto-submit (disabled)")
+            
+            return True
+            
+        except Exception as e:
+            print(f"[2Captcha] Injection error: {e}")
+            return False
         
     except Exception as e:
         print(f"[2Captcha] Error: {e}")
