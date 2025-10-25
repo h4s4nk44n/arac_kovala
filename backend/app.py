@@ -789,6 +789,24 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 120) -> bool:
         page_url = sb.get_current_url()
         print(f"[2Captcha] ✓ Found sitekey: {sitekey[:20]}...")
         print(f"[2Captcha] Page URL: {page_url}")
+        # Save a diagnostic snapshot before submitting to 2Captcha
+        try:
+            ts_pre = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            shot_pre = os.path.join(SCREENSHOTS_DIR, f"recaptcha_pre_submit_{ts_pre}.png")
+            sb.save_screenshot(shot_pre)
+            html_pre_path = os.path.join(HTML_SNAPSHOTS_DIR, f"recaptcha_pre_submit_{ts_pre}.html")
+            try:
+                with open(html_pre_path, 'w', encoding='utf-8') as f:
+                    f.write(sb.get_page_source())
+            except Exception:
+                try:
+                    with open(html_pre_path, 'w', encoding='utf-8') as f:
+                        f.write(sb.driver.page_source)
+                except Exception:
+                    pass
+            print(f"[2Captcha] Saved pre-submit diagnostics: {shot_pre}, {html_pre_path}")
+        except Exception:
+            pass
         
         # Submit CAPTCHA to 2Captcha API
         print("[2Captcha] Submitting CAPTCHA to 2Captcha service...")
@@ -896,6 +914,24 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 120) -> bool:
                         sb.execute_script(inject_js)
                         print("[2Captcha] ✓ Solution injected successfully")
                         sb.sleep(1.0)
+                        # Save a diagnostic snapshot AFTER injection
+                        try:
+                            ts_post = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                            shot_post = os.path.join(SCREENSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.png")
+                            sb.save_screenshot(shot_post)
+                            html_post_path = os.path.join(HTML_SNAPSHOTS_DIR, f"recaptcha_post_inject_{ts_post}.html")
+                            try:
+                                with open(html_post_path, 'w', encoding='utf-8') as f:
+                                    f.write(sb.get_page_source())
+                            except Exception:
+                                try:
+                                    with open(html_post_path, 'w', encoding='utf-8') as f:
+                                        f.write(sb.driver.page_source)
+                                except Exception:
+                                    pass
+                            print(f"[2Captcha] Saved post-inject diagnostics: {shot_post}, {html_post_path}")
+                        except Exception:
+                            pass
                         
                         # Auto-submit the form after CAPTCHA solution
                         print("[2Captcha] Auto-submitting form after solution...")
@@ -2430,11 +2466,15 @@ def bootstrap():
         _verify_chrome_binary()
         _load_data_from_disk()
         
-        # Ensure we have valid session before starting scraper
+        # Ensure we have valid session before starting scraper.
+        # Run the potentially-long session initialization in a background thread
+        # so the first HTTP request doesn't block while we attempt a proxy login.
         try:
-            _ensure_valid_session()
+            t = threading.Thread(target=_ensure_valid_session, daemon=True)
+            t.start()
+            print("Session initialization started in background thread")
         except Exception as e:
-            print(f"Session initialization warning: {e}")
+            print(f"Session initialization (background) warning: {e}")
         
         _start_scraper_thread()
         _BOOTSTRAPPED = True
