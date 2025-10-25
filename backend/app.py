@@ -862,7 +862,7 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
             print(f"[2Captcha] ❌ Failed to get solution after {elapsed}s: {e}")
             return False
         
-        # OLD HTTP API CODE REMOVED - NOW USING SDK ABOVE
+        # OLD HTTP API CODE REMOVED - NOW USING SDK ABOVE t
         
         # Inject the solution into the page with proper callback triggering
         print("[2Captcha] Injecting solution into page...")
