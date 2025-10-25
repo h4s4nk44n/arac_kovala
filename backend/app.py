@@ -735,150 +735,197 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
 
     return False
 
-def _solve_recaptcha_with_buster(sb, max_wait_seconds: int = 120) -> bool:
+def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 120) -> bool:
     """
-    Use Buster extension to solve reCAPTCHA/hCaptcha challenges.
-    Buster adds a solver button in a closed shadow root (undetectable via CSS).
-    We click on the PHYSICAL LOCATION where the button appears (near audio button).
-    Returns True if CAPTCHA appears to be solved, False otherwise.
+    Use 2Captcha API service to solve reCAPTCHA v2/v3 challenges.
+    Requires TWOCAPTCHA_API_KEY environment variable.
+    Returns True if CAPTCHA is solved, False otherwise.
     """
-    print("[Buster] Looking for reCAPTCHA/hCaptcha challenge iframe...")
-    
-    def _captcha_present() -> bool:
-        try:
-            # Check for reCAPTCHA challenge iframe (bframe - the actual challenge box)
-            recaptcha_frames = sb.find_elements('css selector', 
-                'iframe[src*="api2/bframe"], iframe[src*="recaptcha/api2/anchor"], iframe[src*="hcaptcha"], iframe[title*="recaptcha challenge"]')
-            return bool(recaptcha_frames)
-        except Exception:
-            return False
-    
-    def _captcha_solved() -> bool:
-        try:
-            # Check if challenge iframe still visible
-            sb.driver.switch_to.default_content()
-            still_present = _captcha_present()
-            if not still_present:
-                return True
-            
-            # Check page HTML for CAPTCHA indicators
-            html = (sb.get_page_source() or '').lower()
-            still_showing = any(word in html for word in ['recaptcha/api2/bframe', 'select all images', 'verify you are human'])
-            return not still_showing
-        except Exception:
-            return False
-    
-    if not _captcha_present():
-        print("[Buster] No reCAPTCHA challenge iframe detected")
+    api_key = os.getenv("TWOCAPTCHA_API_KEY", "").strip()
+    if not api_key:
+        print("[2Captcha] ⚠ TWOCAPTCHA_API_KEY not set, skipping 2Captcha solver")
         return False
     
-    print("[Buster] ✓ reCAPTCHA challenge detected, invoking Buster...")
-    start = time.time()
+    print("[2Captcha] Looking for reCAPTCHA challenge...")
     
     try:
-        # Find the reCAPTCHA challenge iframe (bframe)
+        # Switch to default content to search for reCAPTCHA
         sb.driver.switch_to.default_content()
-        recaptcha_frames = sb.find_elements('css selector', 
-            'iframe[src*="api2/bframe"], iframe[title*="recaptcha challenge"]')
         
-        if not recaptcha_frames:
-            print("[Buster] Could not find challenge iframe")
+        # Find the reCAPTCHA site key from the page
+        sitekey = None
+        
+        # Method 1: Look for data-sitekey attribute
+        try:
+            recaptcha_elements = sb.find_elements('css selector', 
+                '[data-sitekey], .g-recaptcha, [class*="recaptcha"]')
+            for elem in recaptcha_elements:
+                sk = elem.get_attribute('data-sitekey')
+                if sk:
+                    sitekey = sk
+                    break
+        except Exception:
+            pass
+        
+        # Method 2: Extract from iframe src
+        if not sitekey:
+            try:
+                recaptcha_iframes = sb.find_elements('css selector', 
+                    'iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]')
+                if recaptcha_iframes:
+                    iframe_src = recaptcha_iframes[0].get_attribute('src')
+                    # Extract sitekey from URL: ?k=SITEKEY&...
+                    import re
+                    match = re.search(r'[?&]k=([^&]+)', iframe_src)
+                    if match:
+                        sitekey = match.group(1)
+            except Exception:
+                pass
+        
+        if not sitekey:
+            print("[2Captcha] Could not find reCAPTCHA sitekey on page")
             return False
         
-        # Switch to the challenge iframe
-        challenge_frame = recaptcha_frames[0]
-        sb.driver.switch_to.frame(challenge_frame)
-        print("[Buster] Switched to reCAPTCHA challenge iframe")
+        page_url = sb.get_current_url()
+        print(f"[2Captcha] ✓ Found sitekey: {sitekey[:20]}...")
+        print(f"[2Captcha] Page URL: {page_url}")
         
-        # Give Buster extension time to inject its button (2-3 seconds)
-        sb.sleep(3.0)
-        
-        # Buster's solver button appears in the button-holder area (closed shadow root)
-        # We can't detect it with CSS, so we click on its PHYSICAL LOCATION
-        # The button typically appears between the audio button and help button
-        
-        # Strategy 1: Try to find the audio button and click nearby (where Buster injects)
+        # Submit CAPTCHA to 2Captcha API
+        print("[2Captcha] Submitting CAPTCHA to 2Captcha service...")
+        submit_url = "http://2captcha.com/in.php"
+        submit_params = {
+            'key': api_key,
+            'method': 'userrecaptcha',
+            'googlekey': sitekey,
+            'pageurl': page_url,
+            'json': 1
+        }
+
+        # If we are using an authenticated proxy (IPROYAL_*), instruct 2Captcha to use it
+        iproyal_host = (os.getenv("IPROYAL_PROXY") or "").strip()
+        iproyal_auth = (os.getenv("IPROYAL_PROXY_AUTH") or "").strip()
+        if iproyal_host and iproyal_auth:
+            try:
+                # iproyal_host is like host:port
+                submit_params['proxy'] = iproyal_host
+                submit_params['proxytype'] = 'HTTP'
+                # parse auth (username:password...); password may contain ':' so join the tail
+                if ':' in iproyal_auth:
+                    parts = iproyal_auth.split(':')
+                    submit_params['proxy_login'] = parts[0]
+                    submit_params['proxy_pass'] = ':'.join(parts[1:])
+                else:
+                    submit_params['proxy_login'] = iproyal_auth
+                # Include a realistic user agent so 2Captcha uses same UA when fetching challenge
+                submit_params['userAgent'] = _realistic_user_agent()
+                print(f"[2Captcha] Using proxy for solver: {iproyal_host} (auth provided)")
+            except Exception:
+                pass
+
+        proxies = _get_iproyal_requests_proxies()
+
         try:
-            audio_button = sb.find_element('#recaptcha-audio-button')
-            # Get audio button location
-            location = audio_button.location
-            size = audio_button.size
+            response = requests.post(submit_url, data=submit_params, timeout=30, proxies=proxies)
+            result = response.json()
             
-            # Buster button appears to the RIGHT of the audio button
-            # Click approximately 60-80 pixels to the right of audio button center
-            buster_x = location['x'] + size['width'] + 70
-            buster_y = location['y'] + (size['height'] // 2)
+            if result.get('status') != 1:
+                error_text = result.get('request', 'Unknown error')
+                print(f"[2Captcha] ❌ Submit failed: {error_text}")
+                return False
             
-            print(f"[Buster] Clicking Buster button location (estimated): x={buster_x}, y={buster_y}")
-            
-            # Use JavaScript to dispatch a click event at the coordinates
-            sb.execute_script(f"""
-                var event = new MouseEvent('click', {{
-                    view: window,
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: {buster_x},
-                    clientY: {buster_y}
-                }});
-                document.elementFromPoint({buster_x}, {buster_y}).dispatchEvent(event);
-            """)
-            
-            print("[Buster] ✓ Clicked Buster solver button (coordinate-based)")
+            captcha_id = result.get('request')
+            print(f"[2Captcha] ✓ CAPTCHA submitted, ID: {captcha_id}")
             
         except Exception as e:
-            print(f"[Buster] Could not click via coordinates: {e}")
-            
-            # Strategy 2: Click on the button-holder div that contains Buster's button
-            try:
-                # Look for the help-button-holder or area where Buster typically injects
-                button_holders = sb.find_elements('css selector', '.button-holder.help-button-holder, .rc-buttons .button-holder')
-                
-                for holder in button_holders:
-                    try:
-                        # Click in the center of each button-holder
-                        sb.execute_script("arguments[0].click();", holder)
-                        print(f"[Buster] Clicked button-holder (fallback method)")
-                        sb.sleep(0.5)
-                    except Exception:
-                        continue
-            except Exception as e2:
-                print(f"[Buster] Fallback click also failed: {e2}")
+            print(f"[2Captcha] Submit request failed: {e}")
+            return False
         
-        # Switch back to default content to monitor for challenge completion
-        sb.driver.switch_to.default_content()
-        sb.sleep(2.0)
+        # Poll for solution (typically takes 30-60 seconds)
+        print("[2Captcha] Waiting for solution (this may take 30-60 seconds)...")
+        result_url = "http://2captcha.com/res.php"
+        start = time.time()
+        poll_delay = 5  # Check every 5 seconds
+        
+        while time.time() - start < max_wait_seconds:
+            sb.sleep(poll_delay)
+            
+            try:
+                result_params = {
+                    'key': api_key,
+                    'action': 'get',
+                    'id': captcha_id,
+                    'json': 1
+                }
+                
+                response = requests.get(result_url, params=result_params, timeout=30, proxies=proxies)
+                result = response.json()
+                
+                if result.get('status') == 1:
+                    # Solution ready!
+                    captcha_solution = result.get('request')
+                    elapsed = int(time.time() - start)
+                    print(f"[2Captcha] ✓ Solution received after {elapsed}s")
+                    
+                    # Inject the solution into the page
+                    print("[2Captcha] Injecting solution into page...")
+                    
+                    # Find the g-recaptcha-response textarea and fill it
+                    inject_js = f"""
+                        var textarea = document.getElementById('g-recaptcha-response');
+                        if (!textarea) {{
+                            textarea = document.querySelector('[name="g-recaptcha-response"]');
+                        }}
+                        if (textarea) {{
+                            textarea.innerHTML = '{captcha_solution}';
+                            textarea.value = '{captcha_solution}';
+                            textarea.style.display = 'block';
+                        }}
+                        
+                        // Trigger callback if exists
+                        if (typeof ___grecaptcha_cfg !== 'undefined') {{
+                            var clients = ___grecaptcha_cfg.clients;
+                            for (var id in clients) {{
+                                if (clients[id].callback) {{
+                                    clients[id].callback('{captcha_solution}');
+                                }}
+                            }}
+                        }}
+                    """
+                    
+                    try:
+                        sb.execute_script(inject_js)
+                        print("[2Captcha] ✓ Solution injected successfully")
+                        sb.sleep(1.0)
+                        return True
+                    except Exception as e:
+                        print(f"[2Captcha] Failed to inject solution: {e}")
+                        return False
+                
+                elif result.get('request') == 'CAPCHA_NOT_READY':
+                    elapsed = int(time.time() - start)
+                    if elapsed % 15 == 0:
+                        print(f"[2Captcha] Still waiting... ({elapsed}s elapsed)")
+                    continue
+                
+                else:
+                    error_text = result.get('request', 'Unknown error')
+                    print(f"[2Captcha] ❌ Error: {error_text}")
+                    return False
+                    
+            except Exception as e:
+                print(f"[2Captcha] Polling error: {e}")
+                continue
+        
+        print(f"[2Captcha] ⚠ Timeout after {max_wait_seconds}s")
+        return False
         
     except Exception as e:
-        print(f"[Buster] Error during iframe interaction: {e}")
+        print(f"[2Captcha] Error: {e}")
         try:
             sb.driver.switch_to.default_content()
         except Exception:
             pass
-    
-    # Wait for Buster to solve the CAPTCHA (can take 30-90 seconds)
-    print("[Buster] Waiting for Buster to solve CAPTCHA (this may take 1-2 minutes)...")
-    
-    check_interval = 5.0
-    while time.time() - start < max_wait_seconds:
-        if _captcha_solved():
-            elapsed = int(time.time() - start)
-            print(f"[Buster] ✓ CAPTCHA solved after {elapsed}s!")
-            return True
-        
-        # Check progress every 5 seconds
-        sb.sleep(check_interval)
-        
-        # Log progress every 15 seconds
-        elapsed = int(time.time() - start)
-        if elapsed % 15 == 0:
-            print(f"[Buster] Still solving... ({elapsed}s elapsed)")
-    
-    print(f"[Buster] ⚠ CAPTCHA not solved after {max_wait_seconds}s")
-    try:
-        sb.driver.switch_to.default_content()
-    except Exception:
-        pass
-    return False
+        return False
 
 def build_brightdata_proxy_string(country_code="tr", session_id=None):
     """
@@ -1028,27 +1075,18 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     try:
         print(f"[Login] Starting proxy login session (uc=True, headless={_is_headless()})")
         
-        # Prepare Chrome args with extensions (proxy + Buster CAPTCHA solver)
+        # Prepare Chrome args with extensions (proxy auth extension)
         chrome_args = _get_chrome_args()
         
-        # Add Buster CAPTCHA solver extension
-        buster_ext_dir = os.path.join(os.path.dirname(__file__), "buster_chrome")
-        if os.path.exists(buster_ext_dir):
-            print(f"[Login] ✓ Buster CAPTCHA solver extension found: {buster_ext_dir}")
-        else:
-            print(f"[Login] ⚠ Buster extension not found at {buster_ext_dir}")
-        
-        # Load both extensions: proxy auth + Buster
+        # Load proxy auth extension
         extensions_to_load = []
         if proxy_ext_dir:
             extensions_to_load.append(proxy_ext_dir)
-        if os.path.exists(buster_ext_dir):
-            extensions_to_load.append(buster_ext_dir)
         
         if extensions_to_load:
             chrome_args.append(f"--load-extension={','.join(extensions_to_load)}")
             chrome_args.append(f"--disable-extensions-except={','.join(extensions_to_load)}")
-            print(f"[Login] Loading {len(extensions_to_load)} Chrome extensions")
+            print(f"[Login] Loading {len(extensions_to_load)} Chrome extension(s)")
         
         with SB(
             uc=True,  # CHANGED: Use undetected mode for login
@@ -1207,7 +1245,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             
             # Try Buster first for any reCAPTCHA/hCaptcha on login page
             try:
-                _solve_recaptcha_with_buster(sb, 60)
+                _solve_recaptcha_with_2captcha(sb, 60)
             except Exception:
                 pass
             
@@ -1321,22 +1359,22 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             for attempt in range(3):
                 print(f"[Login] CAPTCHA solving attempt {attempt + 1}/3")
                 
-                # First, try Buster extension (best for reCAPTCHA/hCaptcha)
+                # First, try 2Captcha API service (best for reCAPTCHA)
                 try:
-                    if _solve_recaptcha_with_buster(sb, 120):
-                        print("[Login] ✓ Buster solved the CAPTCHA!")
+                    if _solve_recaptcha_with_2captcha(sb, 120):
+                        print("[Login] ✓ 2Captcha solved the CAPTCHA!")
                         # Give a moment for page to process
                         sb.sleep(2.0)
                         # Check if we're redirected
                         try:
                             current_url_check = sb.get_current_url().lower()
                             if "giris" not in current_url_check and "login" not in current_url_check:
-                                print(f"[Login] ✓ Redirected away from login after Buster (URL: {current_url_check})")
+                                print(f"[Login] ✓ Redirected away from login after 2Captcha (URL: {current_url_check})")
                                 break
                         except Exception:
                             pass
                 except Exception as e:
-                    print(f"[Login] Buster error: {e}")
+                    print(f"[Login] 2Captcha error: {e}")
                 
                 # Fallback to other CAPTCHA solvers
                 try:
