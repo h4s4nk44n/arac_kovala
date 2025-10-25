@@ -46,4 +46,12 @@ RUN google-chrome --version && \
 # Recommend environment flags for Chrome inside containers
 ENV EXTRA_CHROME_ARGS="--disable-dev-shm-usage,--no-sandbox"
 
-CMD ["bash", "-lc", "exec gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app"]
+# Create startup script that fixes chromedriver permissions
+RUN echo '#!/bin/bash\n\
+echo "Fixing chromedriver permissions..."\n\
+find /usr/local/lib/python*/site-packages/seleniumbase/drivers/ -name "chromedriver*" -exec chmod +x {} \\; 2>/dev/null || true\n\
+echo "Starting application with xvfb and gunicorn..."\n\
+exec xvfb-run -a -s "-screen 0 1920x1080x24" gunicorn -w 1 -k gthread -b 0.0.0.0:${PORT:-8080} app:app\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]

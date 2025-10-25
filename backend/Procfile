@@ -1,1 +1,1 @@
-web: bash -lc "exec xvfb-run -a -s '-screen 0 1920x1080x24' gunicorn -w 1 -k gthread -b 0.0.0.0:$PORT app:app"
+web: bash start.sh
