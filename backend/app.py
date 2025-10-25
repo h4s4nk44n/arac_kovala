@@ -847,27 +847,11 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         }
         
         # Parse and add proxy parameters if provided
-        if proxy_string:
-            try:
-                # Parse proxy string: "user:pass@host:port"
-                if '@' in proxy_string:
-                    auth_part, server_part = proxy_string.split('@', 1)
-                    proxy_user, proxy_pass = auth_part.split(':', 1)
-                    proxy_host, proxy_port = server_part.split(':', 1)
-                    
-                    # 2Captcha Python SDK proxy format (from official docs)
-                    # proxy={'type': 'HTTP', 'uri': 'login:password@IP_address:PORT'}
-                    solver_params['proxy'] = {
-                        'type': 'HTTP',
-                        'uri': f'{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}'
-                    }
-                    print(f"[2Captcha] Using proxy for solver: {proxy_host}:{proxy_port}")
-                else:
-                    print("[2Captcha] ⚠ Invalid proxy format, solving without proxy")
-            except Exception as e:
-                print(f"[2Captcha] ⚠ Failed to parse proxy: {e}, solving without proxy")
-        else:
-            print("[2Captcha] Solving WITHOUT proxy (no proxy provided)")
+        # IMPORTANT: Solve WITHOUT proxy to avoid ERROR_CAPTCHA_UNSOLVABLE
+        # When using proxy, 2Captcha workers often fail with poor image quality or network issues
+        # The solution token works regardless of where it was solved
+        # Our browser is still using the proxy, so the injection happens from correct IP
+        print("[2Captcha] Solving WITHOUT proxy (better success rate for image challenges)")
         
         # Submit and wait for solution (SDK handles polling automatically)
         start_time = time.time()
@@ -890,63 +874,116 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         print("[2Captcha] Injecting solution into page...")
         print(f"[2Captcha] Token length: {len(captcha_solution)} chars, starts with: {captcha_solution[:50]}...")
         
-        # CRITICAL FIX: Pass token as argument to avoid JavaScript injection issues
+        # CRITICAL FIX: For invisible/enterprise reCAPTCHA (modal iframe), we need to override grecaptcha API
         inject_js = """
             const token = arguments[0];
-            console.log('[2Captcha-Inject] Starting injection with token:', token.substring(0, 50));
+            console.log('[2Captcha-Inject] Starting injection for invisible reCAPTCHA');
+            console.log('[2Captcha-Inject] Token length:', token.length);
             
-            // STEP 1: Find and populate the textarea
-            let textarea = document.getElementById('g-recaptcha-response');
-            if (!textarea) {
-                textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
-            }
+            let injected = false;
+            let method = 'none';
             
-            if (!textarea) {
-                console.error('[2Captcha-Inject] ❌ textarea not found!');
-                return { success: false, error: 'textarea_not_found' };
-            }
-            
-            // Make visible and set value
-            textarea.style.display = 'block';
-            textarea.innerHTML = token;
-            textarea.value = token;
-            console.log('[2Captcha-Inject] ✓ Textarea updated');
-            
-            // STEP 2: Find and execute callback
-            const recaptchaDiv = document.querySelector('[data-sitekey]');
-            if (recaptchaDiv) {
-                const callbackName = recaptchaDiv.getAttribute('data-callback');
-                if (callbackName && window[callbackName]) {
-                    console.log('[2Captcha-Inject] Executing callback:', callbackName);
-                    try {
-                        window[callbackName](token);
-                        return { success: true, method: 'data-callback', callback: callbackName };
-                    } catch (e) {
-                        console.error('[2Captcha-Inject] Callback failed:', e);
-                    }
+            // METHOD 1: Override grecaptcha.enterprise (priority)
+            if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
+                console.log('[2Captcha-Inject] Found grecaptcha.enterprise');
+                try {
+                    grecaptcha.enterprise.getResponse = function() { return token; };
+                    method = 'enterprise_override';
+                    injected = true;
+                    console.log('[2Captcha-Inject] ✓ Overrode grecaptcha.enterprise.getResponse');
+                } catch (e) {
+                    console.error('[2Captcha-Inject] Enterprise override failed:', e);
                 }
             }
             
-            // STEP 3: Search ___grecaptcha_cfg as fallback
-            if (window.___grecaptcha_cfg && window.___grecaptcha_cfg.clients) {
-                for (const id in window.___grecaptcha_cfg.clients) {
-                    const client = window.___grecaptcha_cfg.clients[id];
-                    if (client && client.callback && typeof client.callback === 'function') {
-                        console.log('[2Captcha-Inject] Executing client callback');
-                        try {
-                            client.callback(token);
-                            return { success: true, method: 'client_callback' };
-                        } catch (e) {
-                            console.error('[2Captcha-Inject] Client callback failed:', e);
+            // METHOD 2: Override standard grecaptcha.getResponse
+            if (typeof grecaptcha !== 'undefined') {
+                console.log('[2Captcha-Inject] Found grecaptcha');
+                try {
+                    const originalGetResponse = grecaptcha.getResponse;
+                    grecaptcha.getResponse = function(widgetId) {
+                        console.log('[2Captcha-Inject] getResponse called, returning token');
+                        return token;
+                    };
+                    if (!injected) {
+                        method = 'grecaptcha_override';
+                        injected = true;
+                    }
+                    console.log('[2Captcha-Inject] ✓ Overrode grecaptcha.getResponse');
+                } catch (e) {
+                    console.error('[2Captcha-Inject] grecaptcha override failed:', e);
+                }
+            }
+            
+            // METHOD 3: Manipulate ___grecaptcha_cfg to inject token and execute callbacks
+            if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
+                console.log('[2Captcha-Inject] Found ___grecaptcha_cfg with', Object.keys(___grecaptcha_cfg.clients).length, 'clients');
+                
+                for (const clientId in ___grecaptcha_cfg.clients) {
+                    const client = ___grecaptcha_cfg.clients[clientId];
+                    console.log('[2Captcha-Inject] Processing client:', clientId);
+                    
+                    // Deep search for response fields and callbacks
+                    const processObject = (obj, depth = 0, path = '') => {
+                        if (depth > 8 || !obj || typeof obj !== 'object') return;
+                        
+                        for (const key in obj) {
+                            const fullPath = path ? path + '.' + key : key;
+                            
+                            // Inject into response fields
+                            if (key === 'response' || key === 'g-recaptcha-response') {
+                                console.log('[2Captcha-Inject] Setting response at:', fullPath);
+                                obj[key] = token;
+                                injected = true;
+                                method = 'cfg_injection';
+                            }
+                            
+                            // Execute callbacks
+                            if (key === 'callback' && typeof obj[key] === 'function') {
+                                console.log('[2Captcha-Inject] Executing callback at:', fullPath);
+                                try {
+                                    obj[key](token);
+                                    method = 'callback_executed';
+                                    console.log('[2Captcha-Inject] ✓ Callback executed successfully');
+                                } catch (e) {
+                                    console.error('[2Captcha-Inject] Callback execution failed:', e);
+                                }
+                            }
+                            
+                            // Recurse
+                            processObject(obj[key], depth + 1, fullPath);
                         }
-                    }
+                    };
+                    
+                    processObject(client);
                 }
             }
             
-            // STEP 4: Trigger change event
-            console.log('[2Captcha-Inject] Triggering change event');
-            textarea.dispatchEvent(new Event('change', { bubbles: true }));
-            return { success: true, method: 'change_event', warning: 'no_callback' };
+            // METHOD 4: Find and populate textareas (fallback for visible reCAPTCHA)
+            const textareas = document.querySelectorAll('textarea[name="g-recaptcha-response"], textarea#g-recaptcha-response');
+            if (textareas.length > 0) {
+                console.log('[2Captcha-Inject] Found', textareas.length, 'textarea(s)');
+                textareas.forEach((ta, idx) => {
+                    ta.style.display = 'block';
+                    ta.value = token;
+                    ta.innerHTML = token;
+                    ta.dispatchEvent(new Event('input', { bubbles: true }));
+                    ta.dispatchEvent(new Event('change', { bubbles: true }));
+                    console.log('[2Captcha-Inject] ✓ Textarea', idx, 'updated');
+                });
+                if (!injected) {
+                    method = 'textarea_fallback';
+                    injected = true;
+                }
+            } else {
+                console.log('[2Captcha-Inject] No textareas found (expected for invisible reCAPTCHA)');
+            }
+            
+            return { 
+                success: injected, 
+                method: method,
+                warning: method === 'callback_executed' ? null : 'no_callback_executed'
+            };
         """
         
         try:
