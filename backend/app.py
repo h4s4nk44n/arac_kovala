@@ -886,103 +886,71 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         
         # OLD HTTP API CODE REMOVED - NOW USING SDK ABOVE t
         
-        # Inject the solution using the OFFICIAL 2Captcha method
+        # Inject the solution using a safer method (pass token as argument)
         print("[2Captcha] Injecting solution into page...")
+        print(f"[2Captcha] Token length: {len(captcha_solution)} chars, starts with: {captcha_solution[:50]}...")
         
-        # Based on official 2Captcha documentation:
-        # https://2captcha.com/2captcha-api#solving_recaptchav2_new
-        inject_js = f"""
-            (function() {{
-                const token = `{captcha_solution}`;
-                console.log('[2Captcha-Inject] Starting injection process...');
-                
-                // STEP 1: Find and populate the textarea
-                let textarea = document.getElementById('g-recaptcha-response');
-                if (!textarea) {{
-                    textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
-                }}
-                
-                if (!textarea) {{
-                    console.error('[2Captcha-Inject] ❌ Could not find g-recaptcha-response textarea!');
-                    return {{ success: false, error: 'textarea_not_found' }};
-                }}
-                
-                // Make visible and set value
-                textarea.style.display = 'block';
-                textarea.innerHTML = token;
-                textarea.value = token;
-                console.log('[2Captcha-Inject] ✓ Token set in textarea');
-                
-                // STEP 2: Find the data-callback from the reCAPTCHA div
-                let callbackName = null;
-                const recaptchaDiv = document.querySelector('.g-recaptcha, [data-sitekey]');
-                if (recaptchaDiv) {{
-                    callbackName = recaptchaDiv.getAttribute('data-callback');
-                    if (callbackName) {{
-                        console.log('[2Captcha-Inject] Found data-callback attribute:', callbackName);
-                    }}
-                }}
-                
-                // STEP 3: Execute the callback if it exists
-                if (callbackName && typeof window[callbackName] === 'function') {{
-                    console.log('[2Captcha-Inject] Executing callback function:', callbackName);
-                    try {{
+        # CRITICAL FIX: Pass token as argument to avoid JavaScript injection issues
+        inject_js = """
+            const token = arguments[0];
+            console.log('[2Captcha-Inject] Starting injection with token:', token.substring(0, 50));
+            
+            // STEP 1: Find and populate the textarea
+            let textarea = document.getElementById('g-recaptcha-response');
+            if (!textarea) {
+                textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+            }
+            
+            if (!textarea) {
+                console.error('[2Captcha-Inject] ❌ textarea not found!');
+                return { success: false, error: 'textarea_not_found' };
+            }
+            
+            // Make visible and set value
+            textarea.style.display = 'block';
+            textarea.innerHTML = token;
+            textarea.value = token;
+            console.log('[2Captcha-Inject] ✓ Textarea updated');
+            
+            // STEP 2: Find and execute callback
+            const recaptchaDiv = document.querySelector('[data-sitekey]');
+            if (recaptchaDiv) {
+                const callbackName = recaptchaDiv.getAttribute('data-callback');
+                if (callbackName && window[callbackName]) {
+                    console.log('[2Captcha-Inject] Executing callback:', callbackName);
+                    try {
                         window[callbackName](token);
-                        console.log('[2Captcha-Inject] ✓ Callback executed successfully');
-                        return {{ success: true, method: 'data-callback', callback: callbackName }};
-                    }} catch (e) {{
-                        console.error('[2Captcha-Inject] Callback execution failed:', e);
-                    }}
-                }}
-                
-                // STEP 4: Search in ___grecaptcha_cfg as fallback
-                if (window.___grecaptcha_cfg && window.___grecaptcha_cfg.clients) {{
-                    console.log('[2Captcha-Inject] Searching for callbacks in ___grecaptcha_cfg...');
-                    for (const clientId in window.___grecaptcha_cfg.clients) {{
-                        const client = window.___grecaptcha_cfg.clients[clientId];
-                        
-                        // Common callback locations in the client object
-                        const callbackPaths = [
-                            client.callback,
-                            client.l?.callback,
-                            client.l?.l?.callback
-                        ];
-                        
-                        for (const cb of callbackPaths) {{
-                            if (typeof cb === 'function') {{
-                                console.log('[2Captcha-Inject] Executing client callback');
-                                try {{
-                                    cb(token);
-                                    console.log('[2Captcha-Inject] ✓ Client callback executed');
-                                    return {{ success: true, method: 'client_callback' }};
-                                }} catch (e) {{
-                                    console.error('[2Captcha-Inject] Client callback failed:', e);
-                                }}
-                            }} else if (typeof cb === 'string' && typeof window[cb] === 'function') {{
-                                console.log('[2Captcha-Inject] Executing named callback:', cb);
-                                try {{
-                                    window[cb](token);
-                                    console.log('[2Captcha-Inject] ✓ Named callback executed');
-                                    return {{ success: true, method: 'named_callback', callback: cb }};
-                                }} catch (e) {{
-                                    console.error('[2Captcha-Inject] Named callback failed:', e);
-                                }}
-                            }}
-                        }}
-                    }}
-                }}
-                
-                // STEP 5: Trigger change event as last resort
-                console.log('[2Captcha-Inject] No callback found, triggering change event');
-                const event = new Event('change', {{ bubbles: true }});
-                textarea.dispatchEvent(event);
-                
-                return {{ success: true, method: 'change_event', warning: 'no_callback_executed' }};
-            }})();
+                        return { success: true, method: 'data-callback', callback: callbackName };
+                    } catch (e) {
+                        console.error('[2Captcha-Inject] Callback failed:', e);
+                    }
+                }
+            }
+            
+            // STEP 3: Search ___grecaptcha_cfg as fallback
+            if (window.___grecaptcha_cfg && window.___grecaptcha_cfg.clients) {
+                for (const id in window.___grecaptcha_cfg.clients) {
+                    const client = window.___grecaptcha_cfg.clients[id];
+                    if (client && client.callback && typeof client.callback === 'function') {
+                        console.log('[2Captcha-Inject] Executing client callback');
+                        try {
+                            client.callback(token);
+                            return { success: true, method: 'client_callback' };
+                        } catch (e) {
+                            console.error('[2Captcha-Inject] Client callback failed:', e);
+                        }
+                    }
+                }
+            }
+            
+            // STEP 4: Trigger change event
+            console.log('[2Captcha-Inject] Triggering change event');
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            return { success: true, method: 'change_event', warning: 'no_callback' };
         """
         
         try:
-            result = sb.execute_script(inject_js)
+            result = sb.execute_script(inject_js, captcha_solution)
             print(f"[2Captcha] Injection result: {result}")
             
             if result and result.get('success'):
@@ -1461,80 +1429,65 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     print(f"[Login] Enter key failed: {e}")
                     return False
 
-            # CRITICAL: Wait for page to change after submit
-            print("[Login] Waiting for post-login response...")
-            sb.sleep(3.0)  # Initial wait for server response
+            # CRITICAL: Wait for page to change and CAPTCHA to appear after submit
+            print("[Login] Waiting for post-login CAPTCHA to appear...")
+            sb.sleep(5.0)  # Wait for server to show CAPTCHA challenge
             
-            # Solve any post-login CAPTCHAs (AGGRESSIVE - increase wait times)
-            print("[Login] Solving post-login CAPTCHAs (this may take 1-2 minutes)...")
+            # Check if CAPTCHA appeared
+            if not sb.is_element_present("iframe[src*='recaptcha']"):
+                print("[Login] No CAPTCHA detected, checking if login succeeded...")
+                sb.sleep(2)
+                current_url = sb.get_current_url().lower()
+                if "giris" not in current_url and "login" not in current_url:
+                    print("[Login] ✓ Login successful without CAPTCHA!")
+                    sb.get(target_url)
+                    sb.sleep(2)
+                    with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+                        json.dump(sb.get_cookies(), f)
+                    print(f"✓ Saved session cookies to {SESSION_COOKIE_FILE}")
+                    return True
+            
+            # CAPTCHA appeared - solve it WITHOUT auto-submit
+            print("[Login] Post-login CAPTCHA detected. Solving (this may take 1-2 minutes)...")
             
             # Try multiple CAPTCHA solving attempts
             for attempt in range(3):
                 print(f"[Login] CAPTCHA solving attempt {attempt + 1}/3")
                 
-                # First, try 2Captcha API service (best for reCAPTCHA, handles image challenges)
-                # CRITICAL: Pass proxy_string so 2Captcha uses the same IP as the browser
+                # Solve CAPTCHA but DON'T auto-submit (we'll click submit manually after validation)
                 try:
-                    if _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=True, proxy_string=proxy_string):  # 3 minutes for image challenges
-                        print("[Login] ✓ 2Captcha solved the CAPTCHA!")
-                        # Wait and check for redirect multiple times (form may take time to process)
-                        for check_attempt in range(10):
-                            sb.sleep(1.0)
+                    if _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=False, proxy_string=proxy_string):
+                        print("[Login] ✓ 2Captcha solution injected")
+                        
+                        # CRITICAL: Wait for Google to validate the CAPTCHA (checkmark appears)
+                        print("[Login] Waiting for CAPTCHA validation (5 seconds)...")
+                        sb.sleep(5.0)
+                        
+                        # NOW click submit button again with validated CAPTCHA
+                        print("[Login] Clicking submit button again after CAPTCHA validation...")
+                        for sel in ("#userLoginSubmitButton", "button[type='submit']"):
                             try:
-                                current_url_check = sb.get_current_url().lower()
-                                if "giris" not in current_url_check and "login" not in current_url_check:
-                                    print(f"[Login] ✓ Redirected away from login after 2Captcha (URL: {current_url_check})")
+                                if sb.is_element_present(sel):
+                                    sb.click(sel)
+                                    print(f"[Login] ✓ Clicked submit: {sel}")
                                     break
                             except Exception:
-                                pass
-                            
-                            # Also check for login form disappearance
-                            try:
-                                if not sb.is_element_present("#username"):
-                                    print(f"[Login] ✓ Login form disappeared (successful login)")
-                                    break
-                            except Exception:
-                                pass
+                                continue
+                        
+                        # Wait for redirect after final submit
+                        print("[Login] Waiting for redirect after final submit...")
+                        sb.sleep(5.0)
+                        
+                        # Check if login succeeded (redirected away from login page)
+                        current_url_check = sb.get_current_url().lower()
+                        if "giris" not in current_url_check and "login" not in current_url_check:
+                            print(f"[Login] ✓ Login successful! Redirected to: {current_url_check}")
+                            break  # Exit attempt loop
                         else:
-                            print("[Login] ⚠ No redirect detected after 2Captcha solution")
+                            print(f"[Login] ⚠ Still on login page after CAPTCHA solution, retrying...")
+                            
                 except Exception as e:
                     print(f"[Login] 2Captcha error: {e}")
-                
-                # Fallback to other CAPTCHA solvers
-                try:
-                    if _bypass_turnstile_if_present(sb, 60):
-                        print("[Login] ✓ Turnstile bypassed")
-                except Exception as e:
-                    print(f"[Login] Turnstile bypass error: {e}")
-                
-                try:
-                    if _try_uc_gui_click_captcha(sb, 90):
-                        print("[Login] ✓ GUI CAPTCHA clicked")
-                except Exception as e:
-                    print(f"[Login] GUI CAPTCHA error: {e}")
-                
-                try:
-                    if _solve_cloudflare_checkbox(sb, 90):
-                        print("[Login] ✓ Cloudflare checkbox solved")
-                except Exception as e:
-                    print(f"[Login] Cloudflare checkbox error: {e}")
-                
-                # Check if we're still on login page
-                try:
-                    current_url_check = sb.get_current_url().lower()
-                    if "giris" not in current_url_check and "login" not in current_url_check:
-                        print(f"[Login] ✓ Redirected away from login (URL: {current_url_check})")
-                        break  # Exit the 3-attempt loop
-                except Exception:
-                    pass
-                
-                # Also check if login form is gone
-                try:
-                    if not sb.is_element_present("#username"):
-                        print(f"[Login] ✓ Login form disappeared")
-                        break  # Exit the 3-attempt loop
-                except Exception:
-                    pass
                 
                 sb.sleep(2.0)  # Small pause between attempts
             
