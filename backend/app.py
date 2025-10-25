@@ -867,77 +867,81 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         # Inject the solution into the page with proper callback triggering
         print("[2Captcha] Injecting solution into page...")
         
-        # CRITICAL: Use the most robust injection method - directly call grecaptcha API
-        # This is more reliable than trying to find and execute callbacks manually
+        # ULTIMATE FIX: Use a completely different, more aggressive injection method
+        # that directly manipulates the grecaptcha internals and forces validation
         inject_js = f"""
             (function() {{
                 var solution = '{captcha_solution}';
+                var success = false;
                 
-                // Step 1: Fill the g-recaptcha-response textarea
-                var textareas = document.querySelectorAll('textarea[name="g-recaptcha-response"]');
-                if (textareas.length === 0) {{
-                    console.error('[2Captcha] No g-recaptcha-response textarea found!');
-                    return false;
-                }}
-                
-                textareas.forEach(function(textarea) {{
+                // Method 1: Fill all g-recaptcha-response textareas
+                document.querySelectorAll('textarea[name="g-recaptcha-response"]').forEach(function(textarea) {{
                     textarea.innerHTML = solution;
                     textarea.value = solution;
+                    textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    textarea.dispatchEvent(new Event('change', {{ bubbles: true }}));
                 }});
                 
-                // Step 2: Use grecaptcha.getResponse() to verify injection worked
-                if (typeof grecaptcha !== 'undefined' && typeof grecaptcha.getResponse === 'function') {{
-                    // Get all widget IDs and inject solution into each
-                    if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {{
-                        Object.keys(___grecaptcha_cfg.clients).forEach(function(clientId) {{
-                            var client = ___grecaptcha_cfg.clients[clientId];
-                            Object.keys(client).forEach(function(widgetId) {{
-                                if (client[widgetId] && client[widgetId].callback) {{
-                                    try {{
-                                        // Execute the callback directly with the solution
-                                        var callback = client[widgetId].callback;
-                                        if (typeof callback === 'function') {{
-                                            callback(solution);
-                                            console.log('[2Captcha] Executed callback for widget', widgetId);
-                                        }} else if (typeof callback === 'string' && typeof window[callback] === 'function') {{
-                                            window[callback](solution);
-                                            console.log('[2Captcha] Executed named callback:', callback);
+                // Method 2: Execute ALL possible callbacks in ___grecaptcha_cfg
+                if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {{
+                    for (var clientKey in ___grecaptcha_cfg.clients) {{
+                        var client = ___grecaptcha_cfg.clients[clientKey];
+                        for (var widgetKey in client) {{
+                            var widget = client[widgetKey];
+                            
+                            // Try to execute callback
+                            if (widget && widget.callback) {{
+                                try {{
+                                    if (typeof widget.callback === 'function') {{
+                                        widget.callback(solution);
+                                        console.log('[2Captcha] ✓ Executed function callback');
+                                        success = true;
+                                    }} else if (typeof widget.callback === 'string') {{
+                                        if (typeof window[widget.callback] === 'function') {{
+                                            window[widget.callback](solution);
+                                            console.log('[2Captcha] ✓ Executed named callback: ' + widget.callback);
+                                            success = true;
                                         }}
-                                    }} catch (e) {{
-                                        console.error('[2Captcha] Callback error:', e);
                                     }}
+                                }} catch (e) {{
+                                    console.error('[2Captcha] Callback execution error:', e);
                                 }}
-                            }});
-                        }});
+                            }}
+                            
+                            // AGGRESSIVE: Directly set the response in widget state
+                            if (widget && widget.K) {{  // K is often the response field
+                                widget.K = solution;
+                            }}
+                            if (widget && widget.response) {{
+                                widget.response = solution;
+                            }}
+                        }}
                     }}
                 }}
                 
-                // Step 3: Trigger change events
-                textareas.forEach(function(textarea) {{
-                    var event = new Event('change', {{ bubbles: true }});
-                    textarea.dispatchEvent(event);
-                }});
+                // Method 3: Try to use grecaptcha.enterprise if available
+                if (typeof grecaptcha !== 'undefined' && typeof grecaptcha.enterprise !== 'undefined') {{
+                    try {{
+                        // This sometimes triggers validation
+                        grecaptcha.enterprise.getResponse();
+                    }} catch (e) {{}}
+                }}
                 
-                return true;
+                // Method 4: Dispatch a custom event that some sites listen for
+                window.dispatchEvent(new CustomEvent('recaptcha-solved', {{ detail: {{ response: solution }} }}));
+                
+                return success;
             }})();
         """
         
         try:
             injection_result = sb.execute_script(inject_js)
             if injection_result:
-                print(f"[2Captcha] ✓ Solution injected and callbacks executed successfully")
+                print(f"[2Captcha] ✓ Solution injected and callbacks executed")
             else:
-                print(f"[2Captcha] ⚠ Solution injected but callbacks may not have executed")
-            
-            # Capture browser console logs to see injection errors
-            try:
-                console_logs = sb.execute_script("""
-                    return (window.console._logs || []).slice(-10);
-                """)
-                if console_logs:
-                    print(f"[2Captcha] Browser console: {console_logs}")
-            except Exception:
-                pass
+                print(f"[2Captcha] ⚠ Solution injected (callback status unknown)")
+        except Exception as e:
+            print(f"[2Captcha] Injection error: {e}")
             
             # CRITICAL: Wait for reCAPTCHA to validate the solution (visual checkmark appears)
             print("[2Captcha] Waiting for reCAPTCHA validation (3-5 seconds)...")
