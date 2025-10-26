@@ -1436,7 +1436,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                     loaded = True
                                     break
                             except Exception as e:
-                                print(f("[Login] Fallback click error: {e}")
+                                print(f"[Login] Fallback click error: {e}")
                     except Exception as e:
                         print(f"[Login] Challenge handling error: {e}")
                     
