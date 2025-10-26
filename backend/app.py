@@ -887,8 +887,30 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
         # Switch to default content
         sb.driver.switch_to.default_content()
         
-        # Wait a moment for page to fully load
-        sb.sleep(2)
+        # CRITICAL: Wait for Turnstile JavaScript to load and render the widget
+        # The challenge page loads a script that then renders the widget dynamically
+        print("[2Captcha-Turnstile] Waiting for Turnstile widget to load...")
+        sb.sleep(3)  # Give JS time to execute
+        
+        # Wait for either the Turnstile script or the response input to appear
+        max_wait = 10
+        for i in range(max_wait):
+            try:
+                has_script = sb.execute_script("""
+                    return document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]') !== null;
+                """)
+                has_input = sb.execute_script("""
+                    return document.querySelector('input[name="cf-turnstile-response"]') !== null;
+                """)
+                
+                if has_script or has_input:
+                    print(f"[2Captcha-Turnstile] ✓ Turnstile elements detected (script: {has_script}, input: {has_input})")
+                    break
+                    
+                if i < max_wait - 1:
+                    sb.sleep(1)
+            except Exception:
+                pass
         
         # Save page source for debugging
         try:
@@ -905,35 +927,60 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
         
         print("[2Captcha-Turnstile] Searching for Turnstile sitekey...")
         
-        # Method 1: Use JavaScript to find data-sitekey attribute
+        # Method 1: Extract from Turnstile API script tag (most reliable for JS challenges)
         try:
-            sitekey_js = """
-                // Look for div with data-sitekey attribute
-                let divs = document.querySelectorAll('div[data-sitekey]');
-                if (divs.length > 0) {
-                    return divs[0].getAttribute('data-sitekey');
+            script_js = """
+                // Look for Turnstile API script
+                let scripts = document.querySelectorAll('script[src*="challenges.cloudflare.com/turnstile"]');
+                if (scripts.length > 0) {
+                    let src = scripts[0].getAttribute('src');
+                    // URL format: https://challenges.cloudflare.com/turnstile/v0/b/SITEKEY/api.js
+                    return src;
                 }
-                
-                // Look for cf-turnstile class
-                divs = document.querySelectorAll('.cf-turnstile');
-                if (divs.length > 0) {
-                    return divs[0].getAttribute('data-sitekey');
-                }
-                
-                // Look in all divs with class containing 'turnstile'
-                divs = document.querySelectorAll('div[class*="turnstile"]');
-                for (let div of divs) {
-                    let sk = div.getAttribute('data-sitekey');
-                    if (sk) return sk;
-                }
-                
                 return null;
             """
-            sitekey = sb.execute_script(sitekey_js)
-            if sitekey:
-                print(f"[2Captcha-Turnstile] ✓ Found sitekey via JavaScript: {sitekey}")
+            script_src = sb.execute_script(script_js)
+            if script_src:
+                print(f"[2Captcha-Turnstile] Found Turnstile script: {script_src}")
+                # Extract sitekey from URL like: /turnstile/v0/b/c88755b0cddc/api.js
+                import re
+                match = re.search(r'/turnstile/v0/[^/]+/([a-zA-Z0-9_-]+)/', script_src)
+                if match:
+                    sitekey = match.group(1)
+                    print(f"[2Captcha-Turnstile] ✓ Extracted sitekey from script URL: {sitekey}")
         except Exception as e:
-            print(f"[2Captcha-Turnstile] JavaScript sitekey search failed: {e}")
+            print(f"[2Captcha-Turnstile] Script tag extraction failed: {e}")
+        
+        # Method 2: Use JavaScript to find data-sitekey attribute
+        if not sitekey:
+            try:
+                sitekey_js = """
+                    // Look for div with data-sitekey attribute
+                    let divs = document.querySelectorAll('div[data-sitekey]');
+                    if (divs.length > 0) {
+                        return divs[0].getAttribute('data-sitekey');
+                    }
+                    
+                    // Look for cf-turnstile class
+                    divs = document.querySelectorAll('.cf-turnstile');
+                    if (divs.length > 0) {
+                        return divs[0].getAttribute('data-sitekey');
+                    }
+                    
+                    // Look in all divs with class containing 'turnstile'
+                    divs = document.querySelectorAll('div[class*="turnstile"]');
+                    for (let div of divs) {
+                        let sk = div.getAttribute('data-sitekey');
+                        if (sk) return sk;
+                    }
+                    
+                    return null;
+                """
+                sitekey = sb.execute_script(sitekey_js)
+                if sitekey:
+                    print(f"[2Captcha-Turnstile] ✓ Found sitekey via JavaScript: {sitekey}")
+            except Exception as e:
+                print(f"[2Captcha-Turnstile] JavaScript sitekey search failed: {e}")
         
         # Method 2: Extract from iframe src URL
         if not sitekey:
@@ -960,11 +1007,19 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
             try:
                 page_source = sb.get_page_source()
                 import re
-                # Look for data-sitekey="..." pattern
-                match = re.search(r'data-sitekey=["\']([0-9a-zA-Z_-]{20,})["\']', page_source)
+                
+                # Pattern 1: Turnstile script URL (most common for JS challenges)
+                # Example: /turnstile/v0/b/c88755b0cddc/api.js
+                match = re.search(r'/turnstile/v0/[^/]+/([a-zA-Z0-9_-]+)/', page_source)
                 if match:
                     sitekey = match.group(1)
-                    print(f"[2Captcha-Turnstile] ✓ Found sitekey in page source: {sitekey}")
+                    print(f"[2Captcha-Turnstile] ✓ Found sitekey in script URL (page source): {sitekey}")
+                else:
+                    # Pattern 2: data-sitekey attribute
+                    match = re.search(r'data-sitekey=["\']([0-9a-zA-Z_-]{20,})["\']', page_source)
+                    if match:
+                        sitekey = match.group(1)
+                        print(f"[2Captcha-Turnstile] ✓ Found data-sitekey in page source: {sitekey}")
             except Exception as e:
                 print(f"[2Captcha-Turnstile] Page source search failed: {e}")
         
