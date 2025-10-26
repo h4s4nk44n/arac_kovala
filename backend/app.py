@@ -1722,14 +1722,54 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             for login_url in login_urls:
                 try:
                     attempt_idx += 1
-                    # CRITICAL: Use uc_open_with_reconnect for stealth, then activate CDP Mode for CAPTCHA
-                    # Load page with UC mode first (allows detection), then switch to CDP for clicking
+                    
+                    # CRITICAL: Install Turnstile interceptor BEFORE loading the page
+                    print("[Login] Installing Turnstile render interceptor via CDP...")
+                    try:
+                        # Use CDP to add script that runs on EVERY page load (before any other scripts)
+                        sb.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+                            "source": """
+                                console.clear = () => console.log('Console was cleared');
+                                window._turnstileParams = null;
+                                window.cfCallback = null;
+                                
+                                // Override turnstile.render BEFORE it's defined
+                                const i = setInterval(() => {
+                                    if (window.turnstile) {
+                                        clearInterval(i);
+                                        const originalRender = window.turnstile.render;
+                                        window.turnstile.render = function(a, b) {
+                                            let params = {
+                                                sitekey: b.sitekey,
+                                                pageurl: window.location.href,
+                                                data: b.cData,
+                                                pagedata: b.chlPageData,
+                                                action: b.action,
+                                                userAgent: navigator.userAgent,
+                                                json: 1
+                                            };
+                                            console.log('intercepted-params:' + JSON.stringify(params));
+                                            window.cfCallback = b.callback;
+                                            window._turnstileParams = params;
+                                            
+                                            // Don't render - we'll solve with 2Captcha
+                                            return;
+                                        };
+                                    }
+                                }, 50);
+                            """
+                        })
+                        print("[Login] ✓ CDP interceptor installed")
+                    except Exception as e:
+                        print(f"[Login] CDP interceptor failed: {e}")
+                    
+                    # Now load the page with interceptor already in place
                     print(f"Loading login page: {login_url}")
                     sb.uc_open_with_reconnect(login_url, reconnect_time=5)
                     
                     # Wait for Cloudflare challenge widget to render (if present)
-                    print("[Login] Waiting for page to settle...")
-                    sb.sleep(3 + random.random() * 2)  # Random 3-5s wait
+                    print("[Login] Waiting for page to settle and Turnstile to render...")
+                    sb.sleep(5 + random.random() * 2)  # Random 5-7s wait for Turnstile to attempt rendering
                     
                     # Take screenshot BEFORE attempting CAPTCHA detection
                     try:
@@ -1772,46 +1812,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     except Exception:
                         pass
                     
-                    # COMPREHENSIVE CLOUDFLARE TURNSTILE DETECTION & SOLVING
-                    print("[Login] Searching for Cloudflare Turnstile (including shadow-root/iframe)...")
-                    
-                    # CRITICAL: Intercept turnstile.render() to capture sitekey dynamically
-                    print("[Login] Installing Turnstile render interceptor...")
-                    try:
-                        # Clear console and inject interceptor (based on proven method)
-                        sb.execute_script("""
-                            console.clear = () => console.log('Console was cleared');
-                            const i = setInterval(() => {
-                                if (window.turnstile) {
-                                    clearInterval(i);
-                                    window.turnstile.render = (a, b) => {
-                                        let params = {
-                                            sitekey: b.sitekey,
-                                            pageurl: window.location.href,
-                                            data: b.cData,
-                                            pagedata: b.chlPageData,
-                                            action: b.action,
-                                            userAgent: navigator.userAgent,
-                                            json: 1
-                                        };
-                                        console.log('intercepted-params:' + JSON.stringify(params));
-                                        window.cfCallback = b.callback;
-                                        window._turnstileParams = params;
-                                        return;
-                                    }
-                                }
-                            }, 50);
-                        """)
-                        print("[Login] ✓ Turnstile interceptor installed")
-                        
-                        # Wait for Turnstile to render and parameters to be captured
-                        print("[Login] Waiting for Turnstile to render (5s)...")
-                        sb.sleep(5)
-                        
-                    except Exception as e:
-                        print(f"[Login] Interceptor installation failed: {e}")
-                    
-                    # EXTRACT PARAMETERS FROM BROWSER CONSOLE LOGS
+                    # EXTRACT PARAMETERS FROM BROWSER CONSOLE LOGS (interceptor was installed via CDP before page load)
                     print("[Login] Checking browser console logs for intercepted parameters...")
                     captcha_params_from_logs = None
                     try:
