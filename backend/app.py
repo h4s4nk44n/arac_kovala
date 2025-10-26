@@ -1409,36 +1409,82 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     # Use SeleniumBase's official method to handle Cloudflare Turnstile
                     # This method waits for the challenge AND waits for validation
                     print("[Login] Handling Cloudflare challenge...")
-                    try:
-                        # Official SeleniumBase UC method - handles both detection and validation
-                        sb.uc_gui_handle_captcha()
-                        print("[Login] ✓ uc_gui_handle_captcha() completed")
-                        
-                        # Wait for challenge to be validated and page to redirect/update
-                        print("[Login] Waiting for challenge validation...")
-                        sb.sleep(3)
-                        
-                        # Verify login form appeared after challenge
-                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                            print("[Login] ✓ Login form appeared after challenge validation")
-                            loaded = True
-                            break
-                        else:
-                            print("[Login] Checking page state...")
-                            # Try alternative detection method - click using uc_gui_click_captcha
-                            try:
-                                sb.uc_gui_click_captcha()
-                                print("[Login] ✓ uc_gui_click_captcha() executed as fallback")
-                                sb.sleep(3)
+                    
+                    # LOOP: Keep trying to solve CAPTCHA until form appears or max attempts reached
+                    captcha_max_attempts = 5
+                    for captcha_attempt in range(captcha_max_attempts):
+                        try:
+                            print(f"[Login] CAPTCHA attempt {captcha_attempt + 1}/{captcha_max_attempts}")
+                            
+                            # Check if login form already appeared (CAPTCHA may be solved)
+                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                print("[Login] ✓ Login form visible - CAPTCHA cleared!")
+                                loaded = True
+                                break
+                            
+                            # Official SeleniumBase UC method - handles both detection and validation
+                            sb.uc_gui_handle_captcha()
+                            print("[Login] ✓ uc_gui_handle_captcha() clicked")
+                            
+                            # CRITICAL: Take screenshot AFTER clicking to see state
+                            ts_captcha = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                            shot_captcha = os.path.join(SCREENSHOTS_DIR, f"captcha_after_click_{captcha_attempt+1}_{ts_captcha}.png")
+                            sb.save_screenshot(shot_captcha)
+                            print(f"[Login] Screenshot saved: {shot_captcha}")
+                            
+                            # Wait for CAPTCHA to validate (checkmark animation)
+                            print("[Login] Waiting for CAPTCHA validation (5s)...")
+                            sb.sleep(5)
+                            
+                            # Take screenshot AFTER validation wait
+                            shot_after_wait = os.path.join(SCREENSHOTS_DIR, f"captcha_after_wait_{captcha_attempt+1}_{ts_captcha}.png")
+                            sb.save_screenshot(shot_after_wait)
+                            print(f"[Login] Screenshot after wait: {shot_after_wait}")
+                            
+                            # Check if login form appeared
+                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                print("[Login] ✓ Login form appeared after CAPTCHA validation!")
+                                loaded = True
+                                break
+                            
+                            # Check if CAPTCHA reappeared (needs another click)
+                            if sb.is_element_present("iframe[src*='challenges.cloudflare.com']") or \
+                               sb.is_element_present("iframe[title*='Widget containing']"):
+                                print("[Login] ⚠ CAPTCHA still visible - will retry...")
+                                continue
+                            
+                            print("[Login] No form or CAPTCHA detected - trying click method...")
+                            # Fallback: try direct click method
+                            sb.uc_gui_click_captcha()
+                            sb.sleep(5)
+                            
+                            # Final screenshot of this attempt
+                            shot_final = os.path.join(SCREENSHOTS_DIR, f"captcha_final_{captcha_attempt+1}_{ts_captcha}.png")
+                            sb.save_screenshot(shot_final)
+                            print(f"[Login] Final screenshot: {shot_final}")
+                            
+                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                print("[Login] ✓ Login form appeared after click method!")
+                                loaded = True
+                                break
                                 
-                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                    print("[Login] ✓ Login form appeared after fallback method")
-                                    loaded = True
-                                    break
-                            except Exception as e:
-                                print(f"[Login] Fallback click error: {e}")
-                    except Exception as e:
-                        print(f"[Login] Challenge handling error: {e}")
+                        except Exception as e:
+                            print(f"[Login] CAPTCHA attempt {captcha_attempt + 1} error: {e}")
+                            # Save error screenshot
+                            try:
+                                ts_err = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                                shot_err = os.path.join(SCREENSHOTS_DIR, f"captcha_error_{captcha_attempt+1}_{ts_err}.png")
+                                sb.save_screenshot(shot_err)
+                                print(f"[Login] Error screenshot: {shot_err}")
+                            except Exception:
+                                pass
+                    
+                    # Check if we succeeded after all attempts
+                    if loaded:
+                        print("[Login] ✓ CAPTCHA solving successful!")
+                        break
+                    else:
+                        print(f"[Login] ✗ CAPTCHA not solved after {captcha_max_attempts} attempts")
                     
                     # Final check for login form
                     try:
