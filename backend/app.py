@@ -1289,7 +1289,6 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
 
             # Load login page
             login_urls = [
-                "https://secure.sahibinden.com/giris",
                 "https://www.sahibinden.com/giris",
             ]
             loaded = False
