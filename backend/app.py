@@ -1991,16 +1991,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 print("[Login]   - Proxy IP is flagged by Cloudflare")
                                 print("[Login]   - Challenge requires manual interaction")
                                 print("[Login]   - Need different proxy or IP rotation")
-                                        break
-                                    else:
-                                        print("[Login] ✗ Login form still not visible")
-                                        print("[Login] Challenge may have failed or IP is flagged")
+                                break
                                     
-                            except Exception as e:
-                                print(f"[Login] ✗ UC Mode error: {e}")
-                                import traceback
-                                traceback.print_exc()
-                        
+
                         # Standard Turnstile - try 2Captcha
                         elif challenge_info.get('hasTurnstileScript') and challenge_info.get('hasTurnstileResponse'):
                             print("[Login] Detected standard Turnstile challenge")
