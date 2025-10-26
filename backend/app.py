@@ -1620,6 +1620,26 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     """
     Open a fresh browser WITH proxy, perform login, save cookies to SESSION_COOKIE_FILE,
     close the browser, and return whether login succeeded.
+    
+    CAPTCHA SOLVING STRATEGY (3-tier approach):
+    
+    1. PRE-LOGIN PAGE CAPTCHA (Cloudflare before login form loads):
+       - Detects Cloudflare Turnstile with sitekey (including shadow-root/iframe)
+       - Extracts sitekey from div[data-sitekey], shadow DOM, or iframe src
+       - Solves using 2Captcha API (preferred for Turnstile with sitekey)
+       - Falls back to UC Mode (uc_gui_handle_captcha) for Managed Challenge
+       - Handles multi-attempt retry with page refresh
+    
+    2. LOGIN FORM CAPTCHA (on the form before submit):
+       - Simple click CAPTCHA (checkbox style): Uses uc_gui_click_captcha()
+       - reCAPTCHA: Solves with 2Captcha API
+       - Cloudflare Turnstile on form: Solves with 2Captcha API
+    
+    3. POST-LOGIN CAPTCHA (after form submission):
+       - Handled in existing post-login logic
+       - Uses same strategies as above
+    
+    This ensures all CAPTCHA types are covered at every stage of the login flow.
     """
     SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
@@ -1752,14 +1772,77 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     except Exception:
                         pass
                     
-                    # Use 2Captcha API to solve Cloudflare Turnstile challenge
-                    print("[Login] Handling Cloudflare challenge...")
+                    # COMPREHENSIVE CLOUDFLARE TURNSTILE DETECTION & SOLVING
+                    print("[Login] Searching for Cloudflare Turnstile (including shadow-root/iframe)...")
                     
                     # IMPORTANT: Check what type of Cloudflare challenge this is
                     challenge_type = None
                     try:
-                        # Collect comprehensive challenge information
+                        # Collect comprehensive challenge information including shadow-root detection
                         challenge_info = sb.execute_script("""
+                            // Helper: Search for Turnstile sitekey in shadow DOM
+                            function findTurnstileSitekeyInShadow(root) {
+                                // Check direct element
+                                const directDiv = root.querySelector('div[data-sitekey]');
+                                if (directDiv) {
+                                    return directDiv.getAttribute('data-sitekey');
+                                }
+                                
+                                // Search shadow roots recursively
+                                const allElements = root.querySelectorAll('*');
+                                for (const el of allElements) {
+                                    if (el.shadowRoot) {
+                                        const result = findTurnstileSitekeyInShadow(el.shadowRoot);
+                                        if (result) return result;
+                                    }
+                                }
+                                return null;
+                            }
+                            
+                            // Helper: Extract sitekey from iframe
+                            function extractSitekeyFromIframe(iframe) {
+                                try {
+                                    const src = iframe.src || '';
+                                    // Turnstile iframe format: https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/.../?sitekey=XXXXX
+                                    const match = src.match(/[?&]sitekey=([^&]+)/);
+                                    return match ? match[1] : null;
+                                } catch (e) {
+                                    return null;
+                                }
+                            }
+                            
+                            // 1. Check for standard Turnstile div with data-sitekey
+                            let sitekey = null;
+                            const turnstileDiv = document.querySelector('div[data-sitekey]');
+                            if (turnstileDiv) {
+                                sitekey = turnstileDiv.getAttribute('data-sitekey');
+                            }
+                            
+                            // 2. Check in shadow roots
+                            if (!sitekey) {
+                                sitekey = findTurnstileSitekeyInShadow(document);
+                            }
+                            
+                            // 3. Extract from Turnstile iframe src
+                            if (!sitekey) {
+                                const turnstileIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+                                if (turnstileIframe) {
+                                    sitekey = extractSitekeyFromIframe(turnstileIframe);
+                                }
+                            }
+                            
+                            // 4. Extract from any iframe with challenge platform URL
+                            if (!sitekey) {
+                                const allIframes = document.querySelectorAll('iframe');
+                                for (const iframe of allIframes) {
+                                    const key = extractSitekeyFromIframe(iframe);
+                                    if (key) {
+                                        sitekey = key;
+                                        break;
+                                    }
+                                }
+                            }
+                            
                             return {
                                 hasTurnstileScript: document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]') !== null,
                                 hasTurnstileResponse: document.querySelector('input[name="cf-turnstile-response"]') !== null,
@@ -1769,10 +1852,18 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 hasCheckingText: document.body.innerText.includes('Checking') || 
                                                 document.body.innerText.includes('güvenliğini gözden') ||
                                                 document.body.innerText.includes('insan olduğunuzu'),
-                                bodyTextStart: document.body.innerText.substring(0, 300)
+                                bodyTextStart: document.body.innerText.substring(0, 300),
+                                turnstileSitekey: sitekey,
+                                hasTurnstileDiv: turnstileDiv !== null,
+                                turnstileIframeCount: document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]').length
                             };
                         """)
-                        print(f"[Login] Challenge detection: {challenge_info}")
+                        print(f"[Login] Challenge detection:")
+                        print(f"[Login]   Turnstile sitekey found: {challenge_info.get('turnstileSitekey', 'None')}")
+                        print(f"[Login]   Turnstile script: {challenge_info.get('hasTurnstileScript')}")
+                        print(f"[Login]   Turnstile iframe count: {challenge_info.get('turnstileIframeCount')}")
+                        print(f"[Login]   Managed challenge: {challenge_info.get('hasManagedChallenge')}")
+                        print(f"[Login]   Has checking text: {challenge_info.get('hasCheckingText')}")
                         
                         # CRITICAL: Save full challenge page structure for analysis
                         try:
@@ -1891,11 +1982,52 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                             import traceback
                             traceback.print_exc()
                         
-                        # Cloudflare Managed Challenge - use SeleniumBase built-in methods
-                        # This is the type sahibinden.com uses (not standard Turnstile widget)
-                        if challenge_info.get('hasManagedChallenge') or challenge_info.get('hasCheckingText'):
+                        # STRATEGY 1: Cloudflare Turnstile with sitekey - use 2Captcha API
+                        if challenge_info.get('turnstileSitekey'):
+                            print("[Login] ✓ Detected Cloudflare Turnstile with sitekey!")
+                            print(f"[Login] Sitekey: {challenge_info.get('turnstileSitekey')}")
+                            print("[Login] Using 2Captcha API to solve...")
+                            
+                            # Get proxy string for 2Captcha (must match browser IP)
+                            captcha_proxy_string = proxy_string if proxy_string else None
+                            
+                            # Try 2Captcha Turnstile solver
+                            if _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds=120, proxy_string=captcha_proxy_string):
+                                print("[Login] ✓ 2Captcha solved Cloudflare Turnstile!")
+                                
+                                # Wait for page to update after solution injection
+                                print("[Login] Waiting for page to process solution...")
+                                sb.sleep(8)
+                                
+                                # Check if login form appeared
+                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                    print("[Login] ✓ Login form appeared after 2Captcha!")
+                                    loaded = True
+                                    break
+                                else:
+                                    print("[Login] Form not visible yet, waiting longer...")
+                                    sb.sleep(5)
+                                    if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                        print("[Login] ✓ Login form appeared after extended wait!")
+                                        loaded = True
+                                        break
+                            else:
+                                print("[Login] ⚠ 2Captcha failed to solve Turnstile")
+                                print("[Login] Trying UC Mode as fallback...")
+                                try:
+                                    sb.uc_gui_handle_captcha()
+                                    sb.sleep(10)
+                                    if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                        print("[Login] ✓ Login form appeared after UC Mode fallback!")
+                                        loaded = True
+                                        break
+                                except Exception as e:
+                                    print(f"[Login] UC Mode fallback error: {e}")
+                        
+                        # STRATEGY 2: Cloudflare Managed Challenge - use UC Mode
+                        elif challenge_info.get('hasManagedChallenge') or challenge_info.get('hasCheckingText'):
                             print("[Login] ✓ Detected Cloudflare Managed Challenge")
-                            print("[Login] This challenge requires SeleniumBase UC Mode")
+                            print("[Login] This challenge requires SeleniumBase UC Mode (2Captcha not supported)")
                             
                             # Try up to 3 times to solve the challenge
                             max_challenge_attempts = 3
@@ -1991,48 +2123,15 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 print("[Login]   - Proxy IP is flagged by Cloudflare")
                                 print("[Login]   - Challenge requires manual interaction")
                                 print("[Login]   - Need different proxy or IP rotation")
-                                break
-                                    
-
-                        # Standard Turnstile - try 2Captcha
-                        elif challenge_info.get('hasTurnstileScript') and challenge_info.get('hasTurnstileResponse'):
-                            print("[Login] Detected standard Turnstile challenge")
-                            print("[Login] Attempting 2Captcha API...")
-                            
-                            # Get proxy string for 2Captcha (must match browser IP)
-                            captcha_proxy_string = proxy_string if proxy_string else None
-                            
-                            # Try 2Captcha Turnstile solver
-                            if _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds=120, proxy_string=captcha_proxy_string):
-                                print("[Login] ✓ 2Captcha solved Cloudflare challenge!")
-                                
-                                # Wait for page to update
-                                sb.sleep(5)
-                                
-                                # Check if login form appeared
-                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                    print("[Login] ✓ Login form appeared after 2Captcha!")
-                                    loaded = True
-                                    break
-                            else:
-                                print("[Login] 2Captcha failed, trying UC Mode fallback...")
-                                try:
-                                    sb.uc_gui_handle_captcha()
-                                    sb.sleep(10)
-                                    if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                        print("[Login] ✓ Login form appeared after UC Mode fallback!")
-                                        loaded = True
-                                        break
-                                except Exception as e:
-                                    print(f"[Login] UC Mode fallback error: {e}")
                         
+                        # STRATEGY 3: Unknown challenge type - try UC Mode
                         else:
-                            print("[Login] ⚠ Unknown challenge type, trying UC Mode...")
+                            print("[Login] ⚠ No specific challenge detected, trying UC Mode...")
                             try:
                                 sb.uc_gui_handle_captcha()
                                 sb.sleep(10)
                                 if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                    print("[Login] ✓ Login form appeared!")
+                                    print("[Login] ✓ Login form appeared after UC Mode!")
                                     loaded = True
                                     break
                             except Exception as e:
@@ -2331,7 +2430,44 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             
             # Try to solve CAPTCHA BEFORE submitting
             captcha_solved = False
-            if sb.is_element_present('iframe[src*="recaptcha"]'):
+            
+            # Check for simple click CAPTCHA (checkbox style) - use UC Mode
+            print("[Login] Checking for simple click CAPTCHA on login form...")
+            try:
+                # Look for common CAPTCHA checkbox patterns (not Cloudflare/reCAPTCHA)
+                click_captcha_selectors = [
+                    'input[type="checkbox"][class*="captcha"]',
+                    'div[class*="captcha"] input[type="checkbox"]',
+                    'label[class*="captcha"]',
+                    '.captcha-checkbox',
+                    '#captcha-checkbox',
+                ]
+                
+                has_click_captcha = False
+                for selector in click_captcha_selectors:
+                    if sb.is_element_present(selector):
+                        print(f"[Login] ✓ Found simple click CAPTCHA: {selector}")
+                        has_click_captcha = True
+                        break
+                
+                if has_click_captcha:
+                    print("[Login] Using uc_gui_click_captcha() for simple checkbox CAPTCHA...")
+                    try:
+                        # Use SeleniumBase UC Mode click handler
+                        if _try_uc_gui_click_captcha(sb, max_wait_seconds=30):
+                            print("[Login] ✓ Simple click CAPTCHA solved!")
+                            captcha_solved = True
+                            sb.sleep(2)
+                        else:
+                            print("[Login] ⚠ Simple click CAPTCHA solving failed")
+                    except Exception as e:
+                        print(f"[Login] Click CAPTCHA error: {e}")
+                        
+            except Exception as e:
+                print(f"[Login] Click CAPTCHA detection error: {e}")
+            
+            # Check for reCAPTCHA
+            if not captcha_solved and sb.is_element_present('iframe[src*="recaptcha"]'):
                 print("[Login] ✓ reCAPTCHA found - solving before submit...")
                 try:
                     if _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=False, proxy_string=proxy_string):
@@ -2343,8 +2479,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 except Exception as e:
                     print(f"[Login] reCAPTCHA error: {e}")
             
-            elif sb.is_element_present('.cf-turnstile') or sb.is_element_present('input[name="cf-turnstile-response"]'):
-                print("[Login] ✓ Cloudflare Turnstile found - solving before submit...")
+            # Check for Cloudflare Turnstile
+            elif not captcha_solved and (sb.is_element_present('.cf-turnstile') or sb.is_element_present('input[name="cf-turnstile-response"]')):
+                print("[Login] ✓ Cloudflare Turnstile found on login form - solving before submit...")
                 try:
                     if _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds=120, proxy_string=proxy_string):
                         print("[Login] ✓ Turnstile solved successfully!")
@@ -2355,8 +2492,8 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 except Exception as e:
                     print(f"[Login] Turnstile error: {e}")
             
-            else:
-                print("[Login] No CAPTCHA detected before submit")
+            if not captcha_solved:
+                print("[Login] No CAPTCHA detected on login form before submit")
 
             # Submit the form
             print("[Login] Submitting login form...")
