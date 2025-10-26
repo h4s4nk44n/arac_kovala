@@ -864,6 +864,8 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
     Solve Cloudflare Turnstile CAPTCHA using 2Captcha API service.
     Requires TWOCAPTCHA_API_KEY environment variable.
     
+    Based on 2Captcha docs: https://2captcha.com/in.php
+    
     Args:
         sb: SeleniumBase driver instance
         max_wait_seconds: Maximum time to wait for solution (default 120s)
@@ -885,50 +887,86 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
         # Switch to default content
         sb.driver.switch_to.default_content()
         
-        # Find the Cloudflare Turnstile sitekey
+        # Wait a moment for page to fully load
+        sb.sleep(2)
+        
+        # Save page source for debugging
+        try:
+            ts_debug = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            debug_html = os.path.join(SCREENSHOTS_DIR, f"page_source_2captcha_{ts_debug}.html")
+            with open(debug_html, 'w', encoding='utf-8') as f:
+                f.write(sb.get_page_source())
+            print(f"[2Captcha-Turnstile] Saved page source: {debug_html}")
+        except Exception as e:
+            print(f"[2Captcha-Turnstile] Could not save page source: {e}")
+        
+        # Find the Cloudflare Turnstile sitekey using JavaScript (more reliable)
         sitekey = None
         
-        # Method 1: Look for Turnstile div with data-sitekey
-        try:
-            turnstile_divs = sb.find_elements('css selector', 
-                '[data-sitekey], .cf-turnstile, [class*="turnstile"]')
-            for elem in turnstile_divs:
-                sk = elem.get_attribute('data-sitekey')
-                if sk:
-                    sitekey = sk
-                    print(f"[2Captcha-Turnstile] Found sitekey in div: {sitekey}")
-                    break
-        except Exception as e:
-            print(f"[2Captcha-Turnstile] Method 1 failed: {e}")
+        print("[2Captcha-Turnstile] Searching for Turnstile sitekey...")
         
-        # Method 2: Extract from Turnstile iframe src
+        # Method 1: Use JavaScript to find data-sitekey attribute
+        try:
+            sitekey_js = """
+                // Look for div with data-sitekey attribute
+                let divs = document.querySelectorAll('div[data-sitekey]');
+                if (divs.length > 0) {
+                    return divs[0].getAttribute('data-sitekey');
+                }
+                
+                // Look for cf-turnstile class
+                divs = document.querySelectorAll('.cf-turnstile');
+                if (divs.length > 0) {
+                    return divs[0].getAttribute('data-sitekey');
+                }
+                
+                // Look in all divs with class containing 'turnstile'
+                divs = document.querySelectorAll('div[class*="turnstile"]');
+                for (let div of divs) {
+                    let sk = div.getAttribute('data-sitekey');
+                    if (sk) return sk;
+                }
+                
+                return null;
+            """
+            sitekey = sb.execute_script(sitekey_js)
+            if sitekey:
+                print(f"[2Captcha-Turnstile] ✓ Found sitekey via JavaScript: {sitekey}")
+        except Exception as e:
+            print(f"[2Captcha-Turnstile] JavaScript sitekey search failed: {e}")
+        
+        # Method 2: Extract from iframe src URL
         if not sitekey:
             try:
-                turnstile_iframes = sb.find_elements('css selector', 
-                    'iframe[src*="challenges.cloudflare.com"]')
-                if turnstile_iframes:
-                    iframe_src = turnstile_iframes[0].get_attribute('src')
-                    # Extract sitekey from Cloudflare URL
+                iframe_js = """
+                    let iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]');
+                    if (iframes.length > 0) {
+                        return iframes[0].getAttribute('src');
+                    }
+                    return null;
+                """
+                iframe_src = sb.execute_script(iframe_js)
+                if iframe_src:
                     import re
                     match = re.search(r'[?&]sitekey=([^&]+)', iframe_src)
                     if match:
                         sitekey = match.group(1)
-                        print(f"[2Captcha-Turnstile] Found sitekey in iframe: {sitekey}")
+                        print(f"[2Captcha-Turnstile] ✓ Found sitekey in iframe src: {sitekey}")
             except Exception as e:
-                print(f"[2Captcha-Turnstile] Method 2 failed: {e}")
+                print(f"[2Captcha-Turnstile] Iframe extraction failed: {e}")
         
-        # Method 3: Look in page source for Turnstile initialization
+        # Method 3: Search page source with regex
         if not sitekey:
             try:
                 page_source = sb.get_page_source()
                 import re
-                # Look for turnstile.render or data-sitekey in script tags
-                matches = re.findall(r'sitekey["\s:]+([0-9a-zA-Z_-]{20,})', page_source)
-                if matches:
-                    sitekey = matches[0]
-                    print(f"[2Captcha-Turnstile] Found sitekey in page source: {sitekey}")
+                # Look for data-sitekey="..." pattern
+                match = re.search(r'data-sitekey=["\']([0-9a-zA-Z_-]{20,})["\']', page_source)
+                if match:
+                    sitekey = match.group(1)
+                    print(f"[2Captcha-Turnstile] ✓ Found sitekey in page source: {sitekey}")
             except Exception as e:
-                print(f"[2Captcha-Turnstile] Method 3 failed: {e}")
+                print(f"[2Captcha-Turnstile] Page source search failed: {e}")
         
         if not sitekey:
             print("[2Captcha-Turnstile] ✗ Could not find Cloudflare Turnstile sitekey")
@@ -984,52 +1022,78 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
             return False
         
         # Inject the Turnstile token into the page
+        # According to 2Captcha docs: inject into input name="cf-turnstile-response"
         print("[2Captcha-Turnstile] Injecting solution into page...")
         
         inject_js = """
             const token = arguments[0];
-            console.log('[2Captcha-Turnstile] Injecting token, length:', token.length);
+            console.log('[2Captcha] Injecting token, length:', token.length);
             
             let injected = false;
+            let method = 'none';
             
-            // Method 1: Find Turnstile response input/textarea
-            const responseInputs = document.querySelectorAll('input[name*="cf-turnstile-response"], textarea[name*="cf-turnstile-response"]');
+            // Primary method: Find cf-turnstile-response (as per 2Captcha docs)
+            let responseInputs = document.querySelectorAll('input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"]');
+            console.log('[2Captcha] Found', responseInputs.length, 'cf-turnstile-response elements');
+            
             if (responseInputs.length > 0) {
                 responseInputs.forEach((input, idx) => {
                     input.value = token;
-                    console.log('[2Captcha-Turnstile] Injected into input', idx);
+                    // Trigger change event
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    console.log('[2Captcha] Injected into cf-turnstile-response', idx);
                     injected = true;
+                    method = 'cf-turnstile-response';
                 });
             }
             
-            // Method 2: Look for hidden inputs with turnstile data
-            const hiddenInputs = document.querySelectorAll('input[type="hidden"][name*="turnstile"]');
-            if (hiddenInputs.length > 0) {
-                hiddenInputs.forEach((input, idx) => {
-                    input.value = token;
-                    console.log('[2Captcha-Turnstile] Injected into hidden input', idx);
-                    injected = true;
-                });
-            }
-            
-            // Method 3: Try to call Turnstile callback if it exists
-            if (typeof window.turnstile !== 'undefined' && window.turnstile.getResponse) {
-                try {
-                    // This might not work, but worth trying
-                    console.log('[2Captcha-Turnstile] Found window.turnstile object');
-                } catch (e) {
-                    console.error('[2Captcha-Turnstile] Turnstile object error:', e);
+            // Fallback: Look for any turnstile-related inputs
+            if (!injected) {
+                let hiddenInputs = document.querySelectorAll('input[name*="turnstile"], textarea[name*="turnstile"]');
+                console.log('[2Captcha] Found', hiddenInputs.length, 'turnstile-related inputs');
+                
+                if (hiddenInputs.length > 0) {
+                    hiddenInputs.forEach((input, idx) => {
+                        input.value = token;
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                        console.log('[2Captcha] Injected into turnstile input', idx);
+                        injected = true;
+                        method = 'turnstile-input';
+                    });
                 }
             }
             
-            return {success: injected, method: injected ? 'input_injection' : 'no_injection'};
+            // Try to find and trigger Turnstile callback
+            if (typeof window.turnstile !== 'undefined') {
+                console.log('[2Captcha] window.turnstile object exists');
+                try {
+                    // Some sites have a callback function
+                    if (window.turnstile.callback) {
+                        window.turnstile.callback(token);
+                        console.log('[2Captcha] Called window.turnstile.callback()');
+                    }
+                } catch (e) {
+                    console.log('[2Captcha] Turnstile callback error:', e.message);
+                }
+            }
+            
+            return {
+                success: injected, 
+                method: method,
+                inputsFound: responseInputs.length
+            };
         """
         
         try:
             result = sb.execute_script(inject_js, token)
             print(f"[2Captcha-Turnstile] Injection result: {result}")
+            
+            if not result.get('success'):
+                print("[2Captcha-Turnstile] ⚠ Warning: No cf-turnstile-response inputs found!")
+                print("[2Captcha-Turnstile] The page may not have loaded Turnstile yet, or uses different method")
         except Exception as e:
             print(f"[2Captcha-Turnstile] ⚠ Injection error: {e}")
+            # Still continue - sometimes it works anyway
         
         # Wait for Cloudflare to validate
         print("[2Captcha-Turnstile] Waiting for Cloudflare validation (5-10s)...")
@@ -1592,14 +1656,37 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     print("[Login] Waiting for page to settle...")
                     sb.sleep(3 + random.random() * 2)  # Random 3-5s wait
                     
-                    # Check if login form is already visible (no challenge)
+                    # Take screenshot BEFORE attempting CAPTCHA detection
                     try:
-                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                            print("[Login] ✓ Login form already visible (no challenge required)")
-                            loaded = True
-                            break
-                    except Exception:
-                        pass
+                        ts_before = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                        shot_before = os.path.join(SCREENSHOTS_DIR, f"login_before_detection_{ts_before}.png")
+                        sb.save_screenshot(shot_before)
+                        print(f"[Login] Screenshot before detection: {shot_before}")
+                    except Exception as e:
+                        print(f"[Login] Screenshot error: {e}")
+                    
+                    # Debug: Check what's actually on the page
+                    print("[Login] Debugging page content...")
+                    try:
+                        page_info = sb.execute_script("""
+                            return {
+                                title: document.title,
+                                url: window.location.href,
+                                hasCloudflareChallengeDiv: document.querySelector('.cf-turnstile') !== null,
+                                hasCloudflareChallengeIframe: document.querySelector('iframe[src*="challenges.cloudflare.com"]') !== null,
+                                hasUsernameField: document.querySelector('#username') !== null,
+                                hasPasswordField: document.querySelector('#password') !== null,
+                                bodyTextStart: document.body.innerText.substring(0, 200),
+                                turnstileDivs: document.querySelectorAll('div[data-sitekey]').length,
+                                allIframes: document.querySelectorAll('iframe').length,
+                                cfTurnstileDivs: document.querySelectorAll('.cf-turnstile').length
+                            };
+                        """)
+                        print(f"[Login] Page debug info:")
+                        for key, value in page_info.items():
+                            print(f"[Login]   {key}: {value}")
+                    except Exception as e:
+                        print(f"[Login] Page info error: {e}")
                     
                     # Check if login form is already visible (no challenge)
                     try:
