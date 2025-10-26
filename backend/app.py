@@ -2174,7 +2174,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     password_field.send_keys(char)
                     sb.sleep(0.05 + random.random() * 0.1)
                 
-                sb.sleep(1.0 + random.random())  # Pause before submit (human-like)
+                sb.sleep(1.0 + random.random())  # Pause before CAPTCHA check (human-like)
                 
             except Exception as e:
                 print(f"[Login] Credential entry failed: {e}")
@@ -2186,6 +2186,141 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 except Exception:
                     pass
                 return False
+
+            # CRITICAL: Check for CAPTCHA BEFORE submitting the form
+            print("[Login] Checking for CAPTCHA before submit...")
+            
+            # CAPTURE PRE-SUBMIT PAGE STRUCTURE
+            try:
+                ts_presubmit = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                
+                # Save screenshot before CAPTCHA
+                screenshot_file = os.path.join(SCREENSHOTS_DIR, f"presubmit_screenshot_{ts_presubmit}.png")
+                sb.save_screenshot(screenshot_file)
+                print(f"[PreSubmit] Screenshot: {screenshot_file}")
+                
+                # Capture CAPTCHA structure
+                captcha_info = sb.execute_script("""
+                    function getElementInfo(el) {
+                        if (!el) return null;
+                        return {
+                            tagName: el.tagName,
+                            id: el.id,
+                            className: el.className,
+                            visible: el.offsetParent !== null,
+                            dimensions: {width: el.offsetWidth, height: el.offsetHeight},
+                            position: {top: el.offsetTop, left: el.offsetLeft}
+                        };
+                    }
+                    
+                    return {
+                        // reCAPTCHA elements
+                        recaptcha: {
+                            iframe: getElementInfo(document.querySelector('iframe[src*="recaptcha"]')),
+                            div: getElementInfo(document.querySelector('.g-recaptcha')),
+                            checkbox: getElementInfo(document.querySelector('#recaptcha-anchor')),
+                            responseField: getElementInfo(document.querySelector('#g-recaptcha-response'))
+                        },
+                        
+                        // Cloudflare Turnstile
+                        turnstile: {
+                            div: getElementInfo(document.querySelector('.cf-turnstile')),
+                            iframe: getElementInfo(document.querySelector('iframe[src*="challenges.cloudflare.com"]')),
+                            responseField: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]'))
+                        },
+                        
+                        // hCaptcha
+                        hcaptcha: {
+                            div: getElementInfo(document.querySelector('.h-captcha')),
+                            iframe: getElementInfo(document.querySelector('iframe[src*="hcaptcha"]'))
+                        },
+                        
+                        // Generic CAPTCHA containers
+                        generic: {
+                            captchaDiv: getElementInfo(document.querySelector('[class*="captcha"]')),
+                            captchaContainer: getElementInfo(document.querySelector('#captcha'))
+                        },
+                        
+                        // All iframes
+                        allIframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
+                            src: iframe.src,
+                            id: iframe.id,
+                            className: iframe.className,
+                            visible: iframe.offsetParent !== null,
+                            width: iframe.width,
+                            height: iframe.height
+                        }))
+                    };
+                """)
+                
+                print("[PreSubmit] ===== CAPTCHA DETECTION =====")
+                
+                # Check each CAPTCHA type
+                captcha_found = None
+                
+                if captcha_info.get('recaptcha', {}).get('iframe'):
+                    print("[PreSubmit] ✓ reCAPTCHA detected!")
+                    captcha_found = 'recaptcha'
+                    recaptcha_info = captcha_info['recaptcha']
+                    print(f"[PreSubmit]   Iframe visible: {recaptcha_info['iframe'].get('visible', False)}")
+                    if recaptcha_info.get('div'):
+                        print(f"[PreSubmit]   Div class: {recaptcha_info['div'].get('className', 'N/A')}")
+                
+                if captcha_info.get('turnstile', {}).get('iframe'):
+                    print("[PreSubmit] ✓ Cloudflare Turnstile detected!")
+                    captcha_found = 'turnstile'
+                
+                if captcha_info.get('hcaptcha', {}).get('iframe'):
+                    print("[PreSubmit] ✓ hCaptcha detected!")
+                    captcha_found = 'hcaptcha'
+                
+                if not captcha_found and captcha_info.get('allIframes'):
+                    print(f"[PreSubmit] Found {len(captcha_info['allIframes'])} iframes:")
+                    for idx, iframe in enumerate(captcha_info['allIframes'][:5]):
+                        print(f"[PreSubmit]   Iframe {idx+1}: src={iframe.get('src', 'N/A')[:80]}, visible={iframe.get('visible', False)}")
+                
+                print("[PreSubmit] ===== END DETECTION =====")
+                
+                # Save structure
+                import json
+                structure_file = os.path.join(SCREENSHOTS_DIR, f"presubmit_captcha_{ts_presubmit}.json")
+                with open(structure_file, 'w', encoding='utf-8') as f:
+                    json.dump(captcha_info, f, indent=2, ensure_ascii=False)
+                print(f"[PreSubmit] Saved structure: {structure_file}")
+                
+            except Exception as e:
+                print(f"[PreSubmit] ✗ Structure capture failed: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            # Try to solve CAPTCHA BEFORE submitting
+            captcha_solved = False
+            if sb.is_element_present('iframe[src*="recaptcha"]'):
+                print("[Login] ✓ reCAPTCHA found - solving before submit...")
+                try:
+                    if _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=False, proxy_string=proxy_string):
+                        print("[Login] ✓ reCAPTCHA solved successfully!")
+                        captcha_solved = True
+                        sb.sleep(3)  # Wait for validation
+                    else:
+                        print("[Login] ⚠ reCAPTCHA solving failed")
+                except Exception as e:
+                    print(f"[Login] reCAPTCHA error: {e}")
+            
+            elif sb.is_element_present('.cf-turnstile') or sb.is_element_present('input[name="cf-turnstile-response"]'):
+                print("[Login] ✓ Cloudflare Turnstile found - solving before submit...")
+                try:
+                    if _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds=120, proxy_string=proxy_string):
+                        print("[Login] ✓ Turnstile solved successfully!")
+                        captcha_solved = True
+                        sb.sleep(3)  # Wait for validation
+                    else:
+                        print("[Login] ⚠ Turnstile solving failed")
+                except Exception as e:
+                    print(f"[Login] Turnstile error: {e}")
+            
+            else:
+                print("[Login] No CAPTCHA detected before submit")
 
             # Submit the form
             print("[Login] Submitting login form...")
@@ -2219,19 +2354,179 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             print("[Login] Waiting for post-login CAPTCHA to appear...")
             sb.sleep(5.0)  # Wait for server to show CAPTCHA challenge
             
+            # CAPTURE POST-LOGIN PAGE STRUCTURE
+            try:
+                ts_postlogin = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                
+                # Save full HTML after login submit
+                postlogin_html = os.path.join(SCREENSHOTS_DIR, f"postlogin_page_{ts_postlogin}.html")
+                with open(postlogin_html, 'w', encoding='utf-8') as f:
+                    f.write(sb.get_page_source())
+                print(f"[PostLogin] Saved HTML: {postlogin_html}")
+                
+                # Capture post-login page structure
+                postlogin_structure = sb.execute_script("""
+                    function getElementInfo(el) {
+                        if (!el) return null;
+                        return {
+                            tagName: el.tagName,
+                            id: el.id,
+                            className: el.className,
+                            innerHTML: el.innerHTML.substring(0, 500),
+                            outerHTML: el.outerHTML.substring(0, 800),
+                            attributes: Array.from(el.attributes).map(a => ({name: a.name, value: a.value}))
+                        };
+                    }
+                    
+                    return {
+                        // Page info
+                        url: window.location.href,
+                        title: document.title,
+                        
+                        // All iframes
+                        iframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
+                            src: iframe.src,
+                            id: iframe.id,
+                            title: iframe.title,
+                            name: iframe.name,
+                            className: iframe.className,
+                            width: iframe.width,
+                            height: iframe.height
+                        })),
+                        
+                        // CAPTCHA-specific elements
+                        captchaElements: {
+                            // reCAPTCHA
+                            recaptchaIframe: getElementInfo(document.querySelector('iframe[src*="recaptcha"]')),
+                            recaptchaDiv: getElementInfo(document.querySelector('.g-recaptcha')),
+                            recaptchaResponse: getElementInfo(document.querySelector('#g-recaptcha-response')),
+                            recaptchaV3: getElementInfo(document.querySelector('.grecaptcha-badge')),
+                            
+                            // Cloudflare Turnstile
+                            turnstileDiv: getElementInfo(document.querySelector('.cf-turnstile')),
+                            turnstileResponse: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]')),
+                            
+                            // Generic CAPTCHA
+                            captchaContainer: getElementInfo(document.querySelector('[class*="captcha"]')),
+                            captchaDiv: getElementInfo(document.querySelector('#captcha')),
+                            
+                            // hCaptcha
+                            hcaptchaIframe: getElementInfo(document.querySelector('iframe[src*="hcaptcha"]')),
+                            hcaptchaDiv: getElementInfo(document.querySelector('.h-captcha'))
+                        },
+                        
+                        // All scripts
+                        scripts: Array.from(document.querySelectorAll('script[src]')).map(s => s.src),
+                        
+                        // Forms
+                        forms: Array.from(document.querySelectorAll('form')).map(form => ({
+                            id: form.id,
+                            name: form.name,
+                            action: form.action,
+                            method: form.method,
+                            className: form.className
+                        })),
+                        
+                        // Error messages
+                        errorMessages: Array.from(document.querySelectorAll('.error, .alert, [class*="error"], [class*="alert"]')).map(el => ({
+                            className: el.className,
+                            text: el.innerText.substring(0, 200)
+                        })),
+                        
+                        // Body text for error detection
+                        bodyText: document.body.innerText
+                    };
+                """)
+                
+                # Save structure as JSON
+                import json
+                structure_file = os.path.join(SCREENSHOTS_DIR, f"postlogin_structure_{ts_postlogin}.json")
+                with open(structure_file, 'w', encoding='utf-8') as f:
+                    json.dump(postlogin_structure, f, indent=2, ensure_ascii=False)
+                print(f"[PostLogin] Saved structure: {structure_file}")
+                
+                # Take screenshot
+                screenshot_file = os.path.join(SCREENSHOTS_DIR, f"postlogin_screenshot_{ts_postlogin}.png")
+                sb.save_screenshot(screenshot_file)
+                print(f"[PostLogin] Screenshot: {screenshot_file}")
+                
+                # Analyze and print findings
+                print("[PostLogin] ===== CAPTCHA ANALYSIS =====")
+                print(f"[PostLogin] URL: {postlogin_structure.get('url', 'N/A')}")
+                print(f"[PostLogin] Title: {postlogin_structure.get('title', 'N/A')}")
+                print(f"[PostLogin] Total iframes: {len(postlogin_structure.get('iframes', []))}")
+                
+                # Show all iframes
+                for idx, iframe in enumerate(postlogin_structure.get('iframes', [])):
+                    print(f"[PostLogin]   Iframe {idx+1}: src={iframe.get('src', 'N/A')[:100]}, title={iframe.get('title', 'N/A')}")
+                
+                # Check CAPTCHA elements
+                captcha_elems = postlogin_structure.get('captchaElements', {})
+                found_captchas = []
+                for elem_name, elem_data in captcha_elems.items():
+                    if elem_data:
+                        print(f"[PostLogin] ✓ Found: {elem_name}")
+                        found_captchas.append(elem_name)
+                
+                if found_captchas:
+                    print(f"[PostLogin] CAPTCHA types detected: {', '.join(found_captchas)}")
+                else:
+                    print("[PostLogin] ⚠ No CAPTCHA elements found in standard locations")
+                
+                # Check for error messages
+                errors = postlogin_structure.get('errorMessages', [])
+                if errors:
+                    print(f"[PostLogin] Error messages found: {len(errors)}")
+                    for err in errors[:3]:  # Show first 3
+                        print(f"[PostLogin]   Error: {err.get('text', 'N/A')[:100]}")
+                
+                # Check body text for CAPTCHA keywords
+                body_text = postlogin_structure.get('bodyText', '').lower()
+                captcha_keywords = ['captcha', 'recaptcha', 'doğrulama', 'robot', 'güvenlik']
+                found_keywords = [kw for kw in captcha_keywords if kw in body_text]
+                if found_keywords:
+                    print(f"[PostLogin] CAPTCHA keywords in text: {', '.join(found_keywords)}")
+                
+                print("[PostLogin] ===== END ANALYSIS =====")
+                
+            except Exception as e:
+                print(f"[PostLogin] ✗ Structure capture failed: {e}")
+                import traceback
+                traceback.print_exc()
+            
             # Check if CAPTCHA appeared
             if not sb.is_element_present("iframe[src*='recaptcha']"):
-                print("[Login] No CAPTCHA detected, checking if login succeeded...")
-                sb.sleep(2)
-                current_url = sb.get_current_url().lower()
-                if "giris" not in current_url and "login" not in current_url:
-                    print("[Login] ✓ Login successful without CAPTCHA!")
-                    sb.get(target_url)
+                print("[Login] No reCAPTCHA iframe detected, checking for other CAPTCHA types...")
+                
+                # Check for other CAPTCHA types
+                has_captcha = False
+                try:
+                    has_captcha = sb.execute_script("""
+                        return document.querySelector('iframe[src*="captcha"]') !== null ||
+                               document.querySelector('.captcha') !== null ||
+                               document.querySelector('[id*="captcha"]') !== null ||
+                               document.querySelector('.cf-turnstile') !== null ||
+                               document.querySelector('.h-captcha') !== null;
+                    """)
+                except Exception:
+                    pass
+                
+                if has_captcha:
+                    print("[Login] ⚠ Found non-reCAPTCHA CAPTCHA element")
+                else:
+                    print("[Login] No CAPTCHA detected, checking if login succeeded...")
                     sb.sleep(2)
-                    with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
-                        json.dump(sb.get_cookies(), f)
-                    print(f"✓ Saved session cookies to {SESSION_COOKIE_FILE}")
-                    return True
+                    current_url = sb.get_current_url().lower()
+                    if "giris" not in current_url and "login" not in current_url:
+                        print("[Login] ✓ Login successful without CAPTCHA!")
+                        sb.get(target_url)
+                        sb.sleep(2)
+                        with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+                            json.dump(sb.get_cookies(), f)
+                        print(f"✓ Saved session cookies to {SESSION_COOKIE_FILE}")
+                        return True
+            else:
+                print("[Login] ✓ reCAPTCHA iframe detected")
             
             # CAPTCHA appeared - solve it WITHOUT auto-submit
             print("[Login] Post-login CAPTCHA detected. Solving (this may take 1-2 minutes)...")
