@@ -1124,6 +1124,12 @@ def _get_selenium_proxy_string(rotate_session=False):
         print("[Proxy] Please set: IPROYAL_PROXY_AUTH=username:password_country-tr_streaming-1")
     
     if proxy_host_port and proxy_auth:
+        # CRITICAL: Ensure Turkey country code for sahibinden.com
+        # IPRoyal format: username:password_country-tr_city-istanbul_streaming-1_sessionid-xxx
+        if "_country-" not in proxy_auth:
+            print("[Proxy] ⚠️  WARNING: No country code in proxy auth! Adding _country-tr")
+            proxy_auth = f"{proxy_auth}_country-tr"
+        
         # Add session rotation for fresh IPs on each login
         if rotate_session and "_sessionid-" not in proxy_auth:
             import uuid
@@ -1133,6 +1139,7 @@ def _get_selenium_proxy_string(rotate_session=False):
         
         proxy_string = f"{proxy_auth}@{proxy_host_port}"
         print(f"[Proxy] Configured proxy: {proxy_host_port}")
+        print(f"[Proxy] Auth string includes: {'country-tr' if 'country-tr' in proxy_auth else '⚠️  NO TURKEY CODE'}")
         return proxy_string
     
     return build_brightdata_proxy_string()
@@ -1201,62 +1208,22 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
         except Exception:
             pass
 
-    # Parse proxy for extension-based auth
-    from proxy_auth_extension import create_proxy_auth_extension
-    
-    proxy_parts = proxy_string.split('@')
-    if len(proxy_parts) == 2:
-        auth_part = proxy_parts[0]  # username:password_options
-        server_part = proxy_parts[1]  # host:port
-        
-        # Split auth
-        if ':' in auth_part:
-            proxy_user = auth_part.split(':')[0]
-            proxy_pass = ':'.join(auth_part.split(':')[1:])  # Password may contain ':'
-        else:
-            proxy_user = auth_part
-            proxy_pass = ""
-        
-        # Split server
-        if ':' in server_part:
-            proxy_host = server_part.split(':')[0]
-            proxy_port = server_part.split(':')[1]
-        else:
-            proxy_host = server_part
-            proxy_port = "80"
-        
-        print(f"[Proxy] Creating auth extension for {proxy_host}:{proxy_port}")
-        proxy_ext_dir = create_proxy_auth_extension(proxy_host, proxy_port, proxy_user, proxy_pass)
-        print(f"[Proxy] Extension created at: {proxy_ext_dir}")
-    else:
-        print(f"[Proxy] WARNING: Invalid proxy format")
-        proxy_ext_dir = None
-    
     try:
         print(f"[Login] Starting proxy login session (uc=True, headless={_is_headless()})")
+        print(f"[Proxy] Using proxy: {proxy_string}")
         
-        # Prepare Chrome args with extensions (proxy auth extension)
-        chrome_args = _get_chrome_args()
-        
-        # Load proxy auth extension
-        extensions_to_load = []
-        if proxy_ext_dir:
-            extensions_to_load.append(proxy_ext_dir)
-        
-        if extensions_to_load:
-            chrome_args.append(f"--load-extension={','.join(extensions_to_load)}")
-            chrome_args.append(f"--disable-extensions-except={','.join(extensions_to_load)}")
-            print(f"[Login] Loading {len(extensions_to_load)} Chrome extension(s)")
-        
+        # SeleniumBase accepts proxy in format: username:password@host:port
+        # This is more reliable than Chrome extension for headless mode
         with SB(
-            uc=True,  # CHANGED: Use undetected mode for login
+            uc=True,  # Use undetected mode for login
             headless=_is_headless(),
             xvfb=True,
             agent=_realistic_user_agent(),
             locale_code="tr-TR",
             window_size="1920,1080",
             user_data_dir=_get_chrome_profile_dir(),
-            chromium_arg=",".join(chrome_args),
+            proxy=proxy_string,  # CRITICAL: Use SeleniumBase's built-in proxy support
+            chromium_arg=",".join(_get_chrome_args()),
         ) as sb:
             print(f"[Proxy] ✓ Browser started with proxy extension")
             
@@ -1629,24 +1596,28 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 if "iki-asamali-dogrulama" in current_url_check or "twoFactor" in current_url_check:
                     print("[Login] ⚠ 2FA page detected!")
                     print("[Login] URL: " + current_url_check)
-                    print("[Login] ℹ️  You're logged in but stuck on 2FA verification.")
-                    print("[Login] Good news: Cookies from this session ARE valid for browsing!")
-                    print("[Login] Saving cookies and treating as successful login...")
+                    print("[Login] ❌ Cannot bypass 2FA automatically.")
+                    print("[Login]")
+                    print("[Login] 💡 WHY IS 2FA REQUIRED?")
+                    print("[Login]    Even with 2FA disabled, sahibinden.com requires it for:")
+                    print("[Login]    - Logins from new/foreign IP addresses (security measure)")
+                    print("[Login]    - Logins from VPN/proxy servers")
+                    print("[Login]")
+                    print("[Login] 🔧 SOLUTIONS:")
+                    print("[Login]    1. Check proxy location - must be TURKEY (currently showing Netherlands!)")
+                    print("[Login]       Set IPROYAL_PROXY_AUTH=username:password_country-tr_streaming-1")
+                    print("[Login]")
+                    print("[Login]    2. Manual 2FA completion:")
+                    print("[Login]       - Complete 2FA verification on sahibinden.com")
+                    print("[Login]       - Export cookies using browser extension")
+                    print("[Login]       - Upload to /data/session_cookies.json")
+                    print("[Login]")
+                    print("[Login]    3. Use a Turkey-based VPS instead of proxy (recommended)")
+                    print("[Login]       - Deploy on a Turkey server (Digital Ocean Istanbul, etc.)")
+                    print("[Login]       - No proxy needed, sahibinden sees Turkish IP")
                     
-                    # Save cookies from 2FA page - they ARE valid for browsing!
-                    # The user is logged in, just can't complete 2FA. But cookies work for scraping.
-                    try:
-                        with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
-                            json.dump(sb.get_cookies(), f)
-                        print(f"[Login] ✓ Saved 2FA session cookies to {SESSION_COOKIE_FILE}")
-                    except Exception as e:
-                        print(f"[Login] Failed to save 2FA cookies: {e}")
-                        return False
-                    
-                    # Don't navigate away - just close this session and return True
-                    # The cookies will work when loaded in a fresh session
-                    print("[Login] Closing 2FA session. Cookies will be used for scraping.")
-                    return True  # Treat as successful login!
+                    # Don't save 2FA cookies - they won't work
+                    return False
                     
             except Exception as e:
                 print(f"[Login] Error checking for 2FA: {e}")
