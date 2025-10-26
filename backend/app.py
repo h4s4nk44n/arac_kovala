@@ -1336,15 +1336,17 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
         print(f"[Proxy] Using proxy: {proxy_string}")
         
         # SeleniumBase accepts proxy in format: username:password@host:port
-        # This is more reliable than Chrome extension for headless mode
+        # CRITICAL: Use incognito + uc mode for maximum anti-detection (per SeleniumBase docs)
+        # "Sometimes you need to add incognito=True with uc=True to maximize your anti-detection abilities"
         with SB(
             uc=True,  # Use undetected mode for login
+            incognito=True,  # CRITICAL: Incognito mode prevents browser cache/history detection
             headless=_is_headless(),
             xvfb=True,
             agent=_realistic_user_agent(),
             locale_code="tr-TR",
             window_size="1920,1080",
-            user_data_dir=_get_chrome_profile_dir(),
+            user_data_dir=None,  # CRITICAL: Don't use profile in incognito mode
             proxy=proxy_string,  # CRITICAL: Use SeleniumBase's built-in proxy support
             chromium_arg=",".join(_get_chrome_args()),
         ) as sb:
@@ -1429,9 +1431,28 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                     loaded = True
                                     break
                             
+                            # CRITICAL: Only click if CAPTCHA iframe actually exists
+                            captcha_present = False
+                            try:
+                                captcha_present = sb.is_element_present("iframe[src*='challenges.cloudflare.com']") or \
+                                                 sb.is_element_present("iframe[title*='Widget containing']")
+                                if not captcha_present:
+                                    print("[Login] No CAPTCHA iframe detected - checking if form appeared...")
+                                    sb.sleep(2)
+                                    if sb.cdp.is_element_present("#username"):
+                                        print("[Login] ✓ Login form appeared without CAPTCHA!")
+                                        loaded = True
+                                        break
+                                    else:
+                                        print("[Login] No form yet, waiting for page to load...")
+                                        sb.sleep(3)
+                                        continue
+                            except Exception as e:
+                                print(f"[Login] CAPTCHA detection error: {e}")
+                            
                             # Add random human-like delay before clicking
-                            human_delay = 1.0 + random.random() * 2.0  # 1-3 seconds
-                            print(f"[Login] Human-like delay: {human_delay:.2f}s")
+                            human_delay = 2.0 + random.random() * 3.0  # 2-5 seconds (more realistic)
+                            print(f"[Login] Human-like delay before click: {human_delay:.2f}s")
                             sb.sleep(human_delay)
                             
                             # Use CDP Mode GUI click (more stealthy than regular UC mode)
@@ -1449,8 +1470,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 sb.save_screenshot(shot_captcha)
                             
                             # Wait for CAPTCHA to validate with random timing (more human-like)
-                            validation_wait = 4.0 + random.random() * 3.0  # 4-7 seconds (random)
-                            print(f"[Login] Waiting for CAPTCHA validation ({validation_wait:.1f}s)...")
+                            # CRITICAL: Cloudflare needs 5-10 seconds to fully validate
+                            validation_wait = 6.0 + random.random() * 4.0  # 6-10 seconds (random)
+                            print(f"[Login] Waiting for Cloudflare validation ({validation_wait:.1f}s)...")
                             sb.sleep(validation_wait)
                             
                             # Take screenshot AFTER validation wait
@@ -1488,6 +1510,11 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                     print("[Login]   1. Proxy IP is already flagged/burned")
                                     print("[Login]   2. Too many recent login attempts from this IP")
                                     print("[Login]   3. Need to rotate to a fresh proxy session")
+                                    
+                                    # Wait longer before retry to avoid triggering rate limits
+                                    retry_delay = 8.0 + random.random() * 4.0  # 8-12 seconds
+                                    print(f"[Login] Waiting {retry_delay:.1f}s before retry...")
+                                    sb.sleep(retry_delay)
                                     
                                 continue
                             
