@@ -1387,15 +1387,15 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             for login_url in login_urls:
                 try:
                     attempt_idx += 1
-                    # CRITICAL: Use uc_open_with_reconnect with proper reconnect_time
-                    # This disconnects chromedriver during page load to avoid detection
-                    print(f"Loading login page: {login_url}")
-                    sb.uc_open_with_reconnect(login_url, reconnect_time=4)
+                    # CRITICAL: Use CDP Mode for maximum stealth
+                    # CDP Mode keeps WebDriver disconnected, which prevents Cloudflare from detecting it
+                    print(f"Loading login page with CDP Mode: {login_url}")
+                    sb.activate_cdp_mode(login_url)
                     
                     # Wait for Cloudflare challenge widget to render (if present)
-                    # The reconnect_time above handles initial load, now wait for JS to inject challenge
-                    print("[Login] Waiting for page to settle...")
-                    sb.sleep(2)
+                    # CDP Mode is now active - WebDriver is disconnected
+                    print("[Login] Waiting for page to settle (CDP Mode active)...")
+                    sb.sleep(2.5 + random.random() * 1.5)  # Random 2.5-4s wait
                     
                     # Check if login form is already visible (no challenge)
                     try:
@@ -1406,89 +1406,134 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     except Exception:
                         pass
                     
-                    # Use SeleniumBase's official method to handle Cloudflare Turnstile
-                    # This method waits for the challenge AND waits for validation
-                    print("[Login] Handling Cloudflare challenge...")
+                    # Use CDP Mode CAPTCHA solving for maximum stealth
+                    # CDP Mode keeps WebDriver disconnected during interaction
+                    print("[Login] Handling Cloudflare challenge with CDP Mode...")
                     
                     # LOOP: Keep trying to solve CAPTCHA until form appears or max attempts reached
-                    captcha_max_attempts = 5
+                    captcha_max_attempts = 3  # Reduced to 3 - if it fails 3 times, IP is flagged
                     for captcha_attempt in range(captcha_max_attempts):
                         try:
                             print(f"[Login] CAPTCHA attempt {captcha_attempt + 1}/{captcha_max_attempts}")
                             
                             # Check if login form already appeared (CAPTCHA may be solved)
-                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                print("[Login] ✓ Login form visible - CAPTCHA cleared!")
-                                loaded = True
-                                break
+                            try:
+                                if sb.cdp.is_element_present("#username") and sb.cdp.is_element_present("#password"):
+                                    print("[Login] ✓ Login form visible - CAPTCHA cleared!")
+                                    loaded = True
+                                    break
+                            except Exception:
+                                # Fallback to regular check if CDP fails
+                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                    print("[Login] ✓ Login form visible - CAPTCHA cleared!")
+                                    loaded = True
+                                    break
                             
-                            # Official SeleniumBase UC method - handles both detection and validation
-                            sb.uc_gui_handle_captcha()
-                            print("[Login] ✓ uc_gui_handle_captcha() clicked")
+                            # Add random human-like delay before clicking
+                            human_delay = 1.0 + random.random() * 2.0  # 1-3 seconds
+                            print(f"[Login] Human-like delay: {human_delay:.2f}s")
+                            sb.sleep(human_delay)
+                            
+                            # Use CDP Mode GUI click (more stealthy than regular UC mode)
+                            print("[Login] Attempting CDP Mode CAPTCHA click...")
+                            sb.cdp.gui_click_captcha()
+                            print("[Login] ✓ cdp.gui_click_captcha() executed")
                             
                             # CRITICAL: Take screenshot AFTER clicking to see state
                             ts_captcha = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                            shot_captcha = os.path.join(SCREENSHOTS_DIR, f"captcha_after_click_{captcha_attempt+1}_{ts_captcha}.png")
-                            sb.save_screenshot(shot_captcha)
-                            print(f"[Login] Screenshot saved: {shot_captcha}")
+                            shot_captcha = os.path.join(SCREENSHOTS_DIR, f"cdp_captcha_after_click_{captcha_attempt+1}_{ts_captcha}.png")
+                            try:
+                                sb.cdp.save_screenshot(shot_captcha)
+                                print(f"[Login] Screenshot saved: {shot_captcha}")
+                            except Exception:
+                                sb.save_screenshot(shot_captcha)
                             
-                            # Wait for CAPTCHA to validate (checkmark animation)
-                            print("[Login] Waiting for CAPTCHA validation (5s)...")
-                            sb.sleep(5)
+                            # Wait for CAPTCHA to validate with random timing (more human-like)
+                            validation_wait = 4.0 + random.random() * 3.0  # 4-7 seconds (random)
+                            print(f"[Login] Waiting for CAPTCHA validation ({validation_wait:.1f}s)...")
+                            sb.sleep(validation_wait)
                             
                             # Take screenshot AFTER validation wait
-                            shot_after_wait = os.path.join(SCREENSHOTS_DIR, f"captcha_after_wait_{captcha_attempt+1}_{ts_captcha}.png")
-                            sb.save_screenshot(shot_after_wait)
-                            print(f"[Login] Screenshot after wait: {shot_after_wait}")
+                            shot_after_wait = os.path.join(SCREENSHOTS_DIR, f"cdp_captcha_after_wait_{captcha_attempt+1}_{ts_captcha}.png")
+                            try:
+                                sb.cdp.save_screenshot(shot_after_wait)
+                                print(f"[Login] Screenshot after wait: {shot_after_wait}")
+                            except Exception:
+                                sb.save_screenshot(shot_after_wait)
                             
                             # Check if login form appeared
-                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                            try:
+                                form_appeared = sb.cdp.is_element_present("#username") and sb.cdp.is_element_present("#password")
+                            except Exception:
+                                form_appeared = sb.is_element_present("#username") and sb.is_element_present("#password")
+                            
+                            if form_appeared:
                                 print("[Login] ✓ Login form appeared after CAPTCHA validation!")
                                 loaded = True
                                 break
                             
-                            # Check if CAPTCHA reappeared (needs another click)
-                            if sb.is_element_present("iframe[src*='challenges.cloudflare.com']") or \
-                               sb.is_element_present("iframe[title*='Widget containing']"):
-                                print("[Login] ⚠ CAPTCHA still visible - will retry...")
+                            # Check if we're stuck in CAPTCHA loop (Cloudflare flagged us)
+                            try:
+                                page_source = sb.cdp.get_page_source() if hasattr(sb.cdp, 'get_page_source') else sb.get_page_source()
+                            except Exception:
+                                page_source = sb.get_page_source()
+                            
+                            if "challenges.cloudflare.com" in page_source or "Just a moment" in page_source:
+                                print(f"[Login] ⚠ Cloudflare is still challenging (attempt {captcha_attempt+1})")
+                                
+                                # If we've tried multiple times, the IP might be flagged
+                                if captcha_attempt >= 1:
+                                    print("[Login] ⚠ Multiple CAPTCHA challenges detected - IP may be flagged by Cloudflare")
+                                    print("[Login] This usually means:")
+                                    print("[Login]   1. Proxy IP is already flagged/burned")
+                                    print("[Login]   2. Too many recent login attempts from this IP")
+                                    print("[Login]   3. Need to rotate to a fresh proxy session")
+                                    
                                 continue
                             
-                            print("[Login] No form or CAPTCHA detected - trying click method...")
-                            # Fallback: try direct click method
-                            sb.uc_gui_click_captcha()
-                            sb.sleep(5)
+                            print("[Login] No CAPTCHA or form detected - checking page state...")
                             
                             # Final screenshot of this attempt
-                            shot_final = os.path.join(SCREENSHOTS_DIR, f"captcha_final_{captcha_attempt+1}_{ts_captcha}.png")
-                            sb.save_screenshot(shot_final)
-                            print(f"[Login] Final screenshot: {shot_final}")
-                            
-                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                print("[Login] ✓ Login form appeared after click method!")
-                                loaded = True
-                                break
+                            shot_final = os.path.join(SCREENSHOTS_DIR, f"cdp_captcha_final_{captcha_attempt+1}_{ts_captcha}.png")
+                            try:
+                                sb.cdp.save_screenshot(shot_final)
+                                print(f"[Login] Final screenshot: {shot_final}")
+                            except Exception:
+                                sb.save_screenshot(shot_final)
                                 
                         except Exception as e:
                             print(f"[Login] CAPTCHA attempt {captcha_attempt + 1} error: {e}")
                             # Save error screenshot
                             try:
                                 ts_err = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                                shot_err = os.path.join(SCREENSHOTS_DIR, f"captcha_error_{captcha_attempt+1}_{ts_err}.png")
-                                sb.save_screenshot(shot_err)
+                                shot_err = os.path.join(SCREENSHOTS_DIR, f"cdp_captcha_error_{captcha_attempt+1}_{ts_err}.png")
+                                try:
+                                    sb.cdp.save_screenshot(shot_err)
+                                except Exception:
+                                    sb.save_screenshot(shot_err)
                                 print(f"[Login] Error screenshot: {shot_err}")
                             except Exception:
                                 pass
                     
                     # Check if we succeeded after all attempts
                     if loaded:
-                        print("[Login] ✓ CAPTCHA solving successful!")
+                        print("[Login] ✓ CAPTCHA solving successful with CDP Mode!")
                         break
                     else:
                         print(f"[Login] ✗ CAPTCHA not solved after {captcha_max_attempts} attempts")
+                        print("[Login] ℹ️ This likely means the proxy IP is flagged/burned by Cloudflare")
+                        print("[Login] ℹ️ Recommendation: Rotate to a new proxy session or use different IP range")
                     
-                    # Final check for login form
+                    # Final check for login form (CDP Mode compatible)
                     try:
-                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                        # Try CDP Mode first (more stealthy)
+                        try:
+                            form_present = sb.cdp.is_element_present("#username") and sb.cdp.is_element_present("#password")
+                        except Exception:
+                            # Fallback to regular WebDriver check
+                            form_present = sb.is_element_present("#username") and sb.is_element_present("#password")
+                        
+                        if form_present:
                             print(f"[Login] ✓ Login form detected")
                             loaded = True
                             break
@@ -1497,8 +1542,13 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     
                     # NOW check for rate-limit page (after captcha attempts)
                     try:
-                        page_text = sb.get_page_source().lower()
-                        current_url = sb.get_current_url().lower()
+                        # Get page source (CDP Mode compatible)
+                        try:
+                            page_text = sb.cdp.get_page_source().lower()
+                            current_url = sb.cdp.get_current_url().lower()
+                        except Exception:
+                            page_text = sb.get_page_source().lower()
+                            current_url = sb.get_current_url().lower()
                         
                         if "olağandışı bir durum" in page_text or "destek kodu:" in page_text:
                             print(f"⚠ Rate-limit page detected on proxy login attempt {attempt_idx} (URL: {current_url})")
