@@ -1534,6 +1534,9 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     u = (sb.get_current_url() or "").lower()
                 except Exception:
                     u = ""
+                # Exclude 2FA pages - they mean login succeeded, just needs verification
+                if "iki-asamali-dogrulama" in u or "twofactor" in u:
+                    return False
                 if ("login" in u) or ("giris" in u):
                     return True
                 try:
