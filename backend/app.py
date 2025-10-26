@@ -1753,73 +1753,268 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                         pass
                     
                     # Use 2Captcha API to solve Cloudflare Turnstile challenge
-                    print("[Login] Handling Cloudflare challenge with 2Captcha API...")
+                    print("[Login] Handling Cloudflare challenge...")
                     
-                    # Get proxy string for 2Captcha (must match browser IP)
-                    captcha_proxy_string = proxy_string if proxy_string else None
-                    
-                    # Try 2Captcha Turnstile solver (up to 2 attempts)
-                    captcha_solved = False
-                    captcha_max_attempts = 2
-                    
-                    for captcha_attempt in range(captcha_max_attempts):
-                        print(f"[Login] 2Captcha attempt {captcha_attempt + 1}/{captcha_max_attempts}")
+                    # IMPORTANT: Check what type of Cloudflare challenge this is
+                    challenge_type = None
+                    try:
+                        # Collect comprehensive challenge information
+                        challenge_info = sb.execute_script("""
+                            return {
+                                hasTurnstileScript: document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]') !== null,
+                                hasTurnstileResponse: document.querySelector('input[name="cf-turnstile-response"]') !== null,
+                                hasManagedChallenge: document.querySelector('script[src*="/cdn-cgi/challenge-platform/"]') !== null,
+                                hasChallengeDiv: document.querySelector('#cf-wrapper') !== null || document.querySelector('[id*="challenge"]') !== null,
+                                pageTitle: document.title,
+                                hasCheckingText: document.body.innerText.includes('Checking') || 
+                                                document.body.innerText.includes('güvenliğini gözden') ||
+                                                document.body.innerText.includes('insan olduğunuzu'),
+                                bodyTextStart: document.body.innerText.substring(0, 300)
+                            };
+                        """)
+                        print(f"[Login] Challenge detection: {challenge_info}")
                         
-                        # Take screenshot before solving
-                        ts_before = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                        shot_before = os.path.join(SCREENSHOTS_DIR, f"before_2captcha_{captcha_attempt+1}_{ts_before}.png")
-                        sb.save_screenshot(shot_before)
-                        print(f"[Login] Screenshot before: {shot_before}")
-                        
-                        # Solve Cloudflare Turnstile with 2Captcha
-                        if _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds=120, proxy_string=captcha_proxy_string):
-                            print("[Login] ✓ 2Captcha solved Cloudflare challenge!")
-                            captcha_solved = True
+                        # CRITICAL: Save full challenge page structure for analysis
+                        try:
+                            ts_debug = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                             
-                            # Wait for page to update
-                            print("[Login] Waiting for page to process solution...")
+                            # Save full HTML
+                            html_file = os.path.join(SCREENSHOTS_DIR, f"cloudflare_challenge_full_{ts_debug}.html")
+                            with open(html_file, 'w', encoding='utf-8') as f:
+                                f.write(sb.get_page_source())
+                            print(f"[Challenge] Saved full HTML: {html_file}")
+                            
+                            # Extract and save detailed challenge structure
+                            challenge_structure = sb.execute_script("""
+                                function getElementInfo(el) {
+                                    if (!el) return null;
+                                    return {
+                                        tagName: el.tagName,
+                                        id: el.id,
+                                        className: el.className,
+                                        innerHTML: el.innerHTML.substring(0, 500),
+                                        attributes: Array.from(el.attributes).map(a => ({name: a.name, value: a.value}))
+                                    };
+                                }
+                                
+                                return {
+                                    // All scripts on the page
+                                    scripts: Array.from(document.querySelectorAll('script')).map(s => ({
+                                        src: s.src,
+                                        hasInnerText: s.innerText.length > 0,
+                                        innerTextStart: s.innerText.substring(0, 200)
+                                    })),
+                                    
+                                    // All iframes
+                                    iframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
+                                        src: iframe.src,
+                                        id: iframe.id,
+                                        title: iframe.title,
+                                        name: iframe.name
+                                    })),
+                                    
+                                    // All forms
+                                    forms: Array.from(document.querySelectorAll('form')).map(form => getElementInfo(form)),
+                                    
+                                    // All inputs
+                                    inputs: Array.from(document.querySelectorAll('input')).map(input => ({
+                                        type: input.type,
+                                        name: input.name,
+                                        id: input.id,
+                                        value: input.value ? '***' : '',
+                                        className: input.className
+                                    })),
+                                    
+                                    // Cloudflare-specific elements
+                                    cloudflareElements: {
+                                        cfWrapper: getElementInfo(document.querySelector('#cf-wrapper')),
+                                        cfChallenge: getElementInfo(document.querySelector('[id*="challenge"]')),
+                                        turnstileDiv: getElementInfo(document.querySelector('.cf-turnstile')),
+                                        turnstileResponse: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]')),
+                                        challengeForm: getElementInfo(document.querySelector('#challenge-form'))
+                                    },
+                                    
+                                    // Page metadata
+                                    metadata: {
+                                        title: document.title,
+                                        url: window.location.href,
+                                        bodyClasses: document.body.className,
+                                        bodyId: document.body.id
+                                    }
+                                };
+                            """)
+                            
+                            # Save structure as JSON
+                            import json
+                            structure_file = os.path.join(SCREENSHOTS_DIR, f"cloudflare_structure_{ts_debug}.json")
+                            with open(structure_file, 'w', encoding='utf-8') as f:
+                                json.dump(challenge_structure, f, indent=2, ensure_ascii=False)
+                            print(f"[Challenge] Saved structure JSON: {structure_file}")
+                            
+                            # Print key findings
+                            print("[Challenge] ===== STRUCTURE ANALYSIS =====")
+                            print(f"[Challenge] Scripts found: {len(challenge_structure.get('scripts', []))}")
+                            print(f"[Challenge] Iframes found: {len(challenge_structure.get('iframes', []))}")
+                            print(f"[Challenge] Forms found: {len(challenge_structure.get('forms', []))}")
+                            print(f"[Challenge] Inputs found: {len(challenge_structure.get('inputs', []))}")
+                            
+                            # Show Cloudflare-specific scripts
+                            cf_scripts = [s for s in challenge_structure.get('scripts', []) if s.get('src') and ('cloudflare' in s.get('src', '').lower() or 'challenge' in s.get('src', '').lower())]
+                            print(f"[Challenge] Cloudflare scripts: {len(cf_scripts)}")
+                            for idx, script in enumerate(cf_scripts[:5]):  # Show first 5
+                                print(f"[Challenge]   Script {idx+1}: {script.get('src', 'N/A')}")
+                            
+                            # Show iframes
+                            if challenge_structure.get('iframes'):
+                                print("[Challenge] Iframes:")
+                                for idx, iframe in enumerate(challenge_structure.get('iframes', [])):
+                                    print(f"[Challenge]   Iframe {idx+1}: src={iframe.get('src', 'N/A')}, title={iframe.get('title', 'N/A')}")
+                            
+                            # Show Cloudflare elements
+                            cf_elems = challenge_structure.get('cloudflareElements', {})
+                            print("[Challenge] Cloudflare Elements:")
+                            for elem_name, elem_data in cf_elems.items():
+                                if elem_data:
+                                    print(f"[Challenge]   {elem_name}: Found (tag={elem_data.get('tagName', 'N/A')})")
+                                else:
+                                    print(f"[Challenge]   {elem_name}: Not found")
+                            
+                            print("[Challenge] ===== END STRUCTURE ANALYSIS =====")
+                            
+                            # Take detailed screenshot
+                            screenshot_file = os.path.join(SCREENSHOTS_DIR, f"cloudflare_challenge_screenshot_{ts_debug}.png")
+                            sb.save_screenshot(screenshot_file)
+                            print(f"[Challenge] Screenshot: {screenshot_file}")
+                            
+                        except Exception as e:
+                            print(f"[Challenge] ✗ Failed to save challenge structure: {e}")
+                            import traceback
+                            traceback.print_exc()
+                        
+                        # Cloudflare Managed Challenge - use SeleniumBase built-in methods
+                        # This is the type sahibinden.com uses (not standard Turnstile widget)
+                        if challenge_info.get('hasManagedChallenge') or challenge_info.get('hasCheckingText'):
+                            print("[Login] ✓ Detected Cloudflare Managed Challenge")
+                            print("[Login] This challenge type requires SeleniumBase UC Mode (2Captcha doesn't support it)")
+                            print("[Login] Using uc_gui_handle_captcha() method...")
+                            
+                            # Wait for challenge to fully render
                             sb.sleep(3)
                             
-                            # Check if login form appeared
-                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                print("[Login] ✓ Login form appeared after 2Captcha solution!")
-                                loaded = True
-                                break
+                            # Take screenshot before
+                            try:
+                                ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                                shot = os.path.join(SCREENSHOTS_DIR, f"managed_challenge_before_{ts}.png")
+                                sb.save_screenshot(shot)
+                                print(f"[Login] Screenshot: {shot}")
+                            except Exception:
+                                pass
+                            
+                            # Use SeleniumBase's built-in method
+                            try:
+                                print("[Login] Executing uc_gui_handle_captcha()...")
+                                sb.uc_gui_handle_captcha()
+                                print("[Login] ✓ uc_gui_handle_captcha() completed")
+                                
+                                # Wait for Cloudflare to validate (needs time!)
+                                print("[Login] Waiting for Cloudflare validation (12s)...")
+                                sb.sleep(12)
+                                
+                                # Take screenshot after
+                                try:
+                                    shot_after = os.path.join(SCREENSHOTS_DIR, f"managed_challenge_after_{ts}.png")
+                                    sb.save_screenshot(shot_after)
+                                    print(f"[Login] Screenshot after: {shot_after}")
+                                except Exception:
+                                    pass
+                                
+                                # Check if login form appeared
+                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                    print("[Login] ✓ Login form appeared after challenge!")
+                                    loaded = True
+                                    break
+                                else:
+                                    print("[Login] Form not visible yet...")
+                                    # Check page state
+                                    current_url = sb.get_current_url()
+                                    page_title = sb.get_title()
+                                    print(f"[Login] Current URL: {current_url}")
+                                    print(f"[Login] Page title: {page_title}")
+                                    
+                                    # Wait a bit more
+                                    print("[Login] Waiting additional 8 seconds...")
+                                    sb.sleep(8)
+                                    
+                                    if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                        print("[Login] ✓ Login form appeared after extended wait!")
+                                        loaded = True
+                                        break
+                                    else:
+                                        print("[Login] ✗ Login form still not visible")
+                                        print("[Login] Challenge may have failed or IP is flagged")
+                                    
+                            except Exception as e:
+                                print(f"[Login] ✗ UC Mode error: {e}")
+                                import traceback
+                                traceback.print_exc()
+                        
+                        # Standard Turnstile - try 2Captcha
+                        elif challenge_info.get('hasTurnstileScript') and challenge_info.get('hasTurnstileResponse'):
+                            print("[Login] Detected standard Turnstile challenge")
+                            print("[Login] Attempting 2Captcha API...")
+                            
+                            # Get proxy string for 2Captcha (must match browser IP)
+                            captcha_proxy_string = proxy_string if proxy_string else None
+                            
+                            # Try 2Captcha Turnstile solver
+                            if _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds=120, proxy_string=captcha_proxy_string):
+                                print("[Login] ✓ 2Captcha solved Cloudflare challenge!")
+                                
+                                # Wait for page to update
+                                sb.sleep(5)
+                                
+                                # Check if login form appeared
+                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                    print("[Login] ✓ Login form appeared after 2Captcha!")
+                                    loaded = True
+                                    break
                             else:
-                                print("[Login] Form not visible yet, waiting longer...")
-                                sb.sleep(3)
+                                print("[Login] 2Captcha failed, trying UC Mode fallback...")
+                                try:
+                                    sb.uc_gui_handle_captcha()
+                                    sb.sleep(10)
+                                    if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                        print("[Login] ✓ Login form appeared after UC Mode fallback!")
+                                        loaded = True
+                                        break
+                                except Exception as e:
+                                    print(f"[Login] UC Mode fallback error: {e}")
+                        
+                        else:
+                            print("[Login] ⚠ Unknown challenge type, trying UC Mode...")
+                            try:
+                                sb.uc_gui_handle_captcha()
+                                sb.sleep(10)
                                 if sb.is_element_present("#username") and sb.is_element_present("#password"):
                                     print("[Login] ✓ Login form appeared!")
                                     loaded = True
                                     break
-                        else:
-                            print(f"[Login] ✗ 2Captcha failed on attempt {captcha_attempt + 1}")
-                    
-                    # If 2Captcha failed, fall back to UC Mode GUI clicking
-                    if not captcha_solved or not loaded:
-                        print("[Login] 2Captcha didn't work, falling back to UC Mode GUI clicking...")
-                        
-                        # Try UC Mode as fallback (1 attempt only)
+                            except Exception as e:
+                                print(f"[Login] UC Mode error: {e}")
+                                
+                    except Exception as e:
+                        print(f"[Login] Challenge detection error: {e}")
+                        # Fallback to UC Mode
                         try:
-                            # Check if CAPTCHA is still present
-                            if sb.is_element_present("iframe[src*='challenges.cloudflare.com']"):
-                                print("[Login] Attempting uc_gui_handle_captcha() as fallback...")
-                                sb.uc_gui_handle_captcha()
-                                
-                                # Wait and check
-                                print("[Login] Waiting for UC Mode to complete...")
-                                sb.sleep(8)
-                                
-                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                    print("[Login] ✓ Login form appeared after UC Mode fallback!")
-                                    loaded = True
-                                else:
-                                    print("[Login] UC Mode fallback didn't help")
-                            else:
-                                print("[Login] No CAPTCHA iframe found for UC Mode fallback")
-                                
-                        except Exception as e:
-                            print(f"[Login] UC Mode fallback error: {e}")
+                            print("[Login] Falling back to UC Mode...")
+                            sb.uc_gui_handle_captcha()
+                            sb.sleep(10)
+                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                print("[Login] ✓ Login form appeared!")
+                                loaded = True
+                                break
+                        except Exception as e2:
+                            print(f"[Login] UC Mode fallback error: {e2}")
                     
                     # Check if we succeeded
                     if loaded:
