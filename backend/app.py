@@ -2495,82 +2495,134 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 traceback.print_exc()
             
             # Check if CAPTCHA appeared
-            if not sb.is_element_present("iframe[src*='recaptcha']"):
-                print("[Login] No reCAPTCHA iframe detected, checking for other CAPTCHA types...")
+            has_turnstile = False
+            has_recaptcha = False
+            has_other_captcha = False
+            
+            try:
+                # Check for Cloudflare Turnstile (most likely based on logs)
+                has_turnstile = sb.execute_script("""
+                    return document.querySelector('input[name="cf-turnstile-response"]') !== null ||
+                           document.querySelector('.cf-turnstile') !== null ||
+                           document.querySelector('iframe[src*="challenges.cloudflare.com"]') !== null;
+                """)
                 
-                # Check for other CAPTCHA types
-                has_captcha = False
+                # Check for reCAPTCHA
+                has_recaptcha = sb.is_element_present("iframe[src*='recaptcha']")
+                
+                # Check for generic CAPTCHA elements
+                has_other_captcha = sb.execute_script("""
+                    return document.querySelector('[class*="captcha"]') !== null ||
+                           document.querySelector('#captcha') !== null;
+                """)
+            except Exception as e:
+                print(f"[Login] CAPTCHA detection error: {e}")
+            
+            print(f"[Login] CAPTCHA detection: Turnstile={has_turnstile}, reCAPTCHA={has_recaptcha}, Other={has_other_captcha}")
+            
+            # If Cloudflare Turnstile detected - use uc_gui_handle_captcha()
+            if has_turnstile:
+                print("[Login] ✓ Cloudflare Turnstile detected after submit!")
+                print("[Login] Using SeleniumBase uc_gui_handle_captcha() to solve...")
+                
                 try:
-                    has_captcha = sb.execute_script("""
-                        return document.querySelector('iframe[src*="captcha"]') !== null ||
-                               document.querySelector('.captcha') !== null ||
-                               document.querySelector('[id*="captcha"]') !== null ||
-                               document.querySelector('.cf-turnstile') !== null ||
-                               document.querySelector('.h-captcha') !== null;
-                    """)
-                except Exception:
-                    pass
-                
-                if has_captcha:
-                    print("[Login] ⚠ Found non-reCAPTCHA CAPTCHA element")
-                else:
-                    print("[Login] No CAPTCHA detected, checking if login succeeded...")
-                    sb.sleep(2)
+                    # Take screenshot before
+                    ts_before = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    shot_before = os.path.join(SCREENSHOTS_DIR, f"turnstile_before_{ts_before}.png")
+                    sb.save_screenshot(shot_before)
+                    print(f"[Login] Screenshot before: {shot_before}")
+                    
+                    # Use UC Mode to handle Turnstile
+                    print("[Login] Executing uc_gui_handle_captcha()...")
+                    sb.uc_gui_handle_captcha()
+                    print("[Login] ✓ uc_gui_handle_captcha() completed")
+                    
+                    # Wait for Cloudflare to validate
+                    print("[Login] Waiting for Turnstile validation (10s)...")
+                    sb.sleep(10)
+                    
+                    # Take screenshot after
+                    shot_after = os.path.join(SCREENSHOTS_DIR, f"turnstile_after_{ts_before}.png")
+                    sb.save_screenshot(shot_after)
+                    print(f"[Login] Screenshot after: {shot_after}")
+                    
+                    # Check if redirected
                     current_url = sb.get_current_url().lower()
+                    print(f"[Login] Current URL after Turnstile: {current_url}")
+                    
                     if "giris" not in current_url and "login" not in current_url:
-                        print("[Login] ✓ Login successful without CAPTCHA!")
-                        sb.get(target_url)
-                        sb.sleep(2)
-                        with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
-                            json.dump(sb.get_cookies(), f)
-                        print(f"✓ Saved session cookies to {SESSION_COOKIE_FILE}")
-                        return True
-            else:
-                print("[Login] ✓ reCAPTCHA iframe detected")
-            
-            # CAPTCHA appeared - solve it WITHOUT auto-submit
-            print("[Login] Post-login CAPTCHA detected. Solving (this may take 1-2 minutes)...")
-            
-            # Try multiple CAPTCHA solving attempts
-            for attempt in range(3):
-                print(f"[Login] CAPTCHA solving attempt {attempt + 1}/3")
-                
-                # Solve CAPTCHA but DON'T auto-submit (we'll click submit manually after validation)
-                try:
-                    if _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=False, proxy_string=proxy_string):
-                        print("[Login] ✓ 2Captcha solution injected")
-                        
-                        # CRITICAL: Wait for Google to validate the CAPTCHA (checkmark appears)
-                        print("[Login] Waiting for CAPTCHA validation (5 seconds)...")
-                        sb.sleep(5.0)
-                        
-                        # NOW click submit button again with validated CAPTCHA
-                        print("[Login] Clicking submit button again after CAPTCHA validation...")
-                        for sel in ("#userLoginSubmitButton", "button[type='submit']"):
-                            try:
-                                if sb.is_element_present(sel):
-                                    sb.click(sel)
-                                    print(f"[Login] ✓ Clicked submit: {sel}")
-                                    break
-                            except Exception:
-                                continue
-                        
-                        # Wait for redirect after final submit
-                        print("[Login] Waiting for redirect after final submit...")
-                        sb.sleep(5.0)
-                        
-                        # Check if login succeeded (redirected away from login page)
-                        current_url_check = sb.get_current_url().lower()
-                        if "giris" not in current_url_check and "login" not in current_url_check:
-                            print(f"[Login] ✓ Login successful! Redirected to: {current_url_check}")
-                            break  # Exit attempt loop
-                        else:
-                            print(f"[Login] ⚠ Still on login page after CAPTCHA solution, retrying...")
-                            
+                        print("[Login] ✓ Turnstile solved! Redirected successfully!")
+                    else:
+                        print("[Login] Still on login page, may need another attempt")
+                        # Try clicking submit again
+                        try:
+                            if sb.is_element_present("#userLoginSubmitButton"):
+                                print("[Login] Clicking submit button again...")
+                                sb.click("#userLoginSubmitButton")
+                                sb.sleep(8)
+                        except Exception:
+                            pass
+                    
                 except Exception as e:
-                    print(f"[Login] 2Captcha error: {e}")
+                    print(f"[Login] ✗ Turnstile solving error: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # If reCAPTCHA detected - use 2Captcha API
+            elif has_recaptcha:
+                print("[Login] ✓ reCAPTCHA detected after submit!")
+                print("[Login] Using 2Captcha API to solve...")
                 
-                sb.sleep(2.0)  # Small pause between attempts
+                # Try multiple CAPTCHA solving attempts
+                for attempt in range(3):
+                    print(f"[Login] reCAPTCHA attempt {attempt + 1}/3")
+                    
+                    try:
+                        if _solve_recaptcha_with_2captcha(sb, max_wait_seconds=180, auto_submit=False, proxy_string=proxy_string):
+                            print("[Login] ✓ 2Captcha solution injected")
+                            
+                            # Wait for validation
+                            print("[Login] Waiting for reCAPTCHA validation (5s)...")
+                            sb.sleep(5.0)
+                            
+                            # Click submit button again
+                            print("[Login] Clicking submit button again...")
+                            for sel in ("#userLoginSubmitButton", "button[type='submit']"):
+                                try:
+                                    if sb.is_element_present(sel):
+                                        sb.click(sel)
+                                        print(f"[Login] ✓ Clicked submit: {sel}")
+                                        break
+                                except Exception:
+                                    continue
+                            
+                            # Wait for redirect
+                            sb.sleep(5.0)
+                            current_url_check = sb.get_current_url().lower()
+                            if "giris" not in current_url_check and "login" not in current_url_check:
+                                print(f"[Login] ✓ Login successful! Redirected to: {current_url_check}")
+                                break
+                            else:
+                                print(f"[Login] ⚠ Still on login page, retrying...")
+                                
+                    except Exception as e:
+                        print(f"[Login] 2Captcha error: {e}")
+                    
+                    sb.sleep(2.0)
+            
+            # No CAPTCHA detected
+            else:
+                print("[Login] No CAPTCHA detected, checking if login succeeded...")
+                sb.sleep(2)
+                current_url = sb.get_current_url().lower()
+                if "giris" not in current_url and "login" not in current_url:
+                    print("[Login] ✓ Login successful without CAPTCHA!")
+                    sb.get(target_url)
+                    sb.sleep(2)
+                    with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+                        json.dump(sb.get_cookies(), f)
+                    print(f"✓ Saved session cookies to {SESSION_COOKIE_FILE}")
+                    return True
             
             # Basic validation: still on login?
             def _still_on_login() -> bool:
