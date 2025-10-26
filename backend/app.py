@@ -859,6 +859,200 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
     print(f"[Cloudflare] ✗ Challenge NOT cleared after {max_wait_seconds}s timeout")
     return False
 
+def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, proxy_string: str = None) -> bool:
+    """
+    Solve Cloudflare Turnstile CAPTCHA using 2Captcha API service.
+    Requires TWOCAPTCHA_API_KEY environment variable.
+    
+    Args:
+        sb: SeleniumBase driver instance
+        max_wait_seconds: Maximum time to wait for solution (default 120s)
+        proxy_string: Proxy string in format "user:pass@host:port" (CRITICAL for IP matching)
+    
+    Returns True if CAPTCHA is solved, False otherwise.
+    """
+    api_key = os.getenv("TWOCAPTCHA_API_KEY", "").strip()
+    if not api_key:
+        print("[2Captcha-Turnstile] ⚠ TWOCAPTCHA_API_KEY not set, skipping 2Captcha solver")
+        return False
+    
+    print("[2Captcha-Turnstile] Looking for Cloudflare Turnstile challenge...")
+    
+    # Initialize 2Captcha solver
+    solver = TwoCaptcha(api_key)
+    
+    try:
+        # Switch to default content
+        sb.driver.switch_to.default_content()
+        
+        # Find the Cloudflare Turnstile sitekey
+        sitekey = None
+        
+        # Method 1: Look for Turnstile div with data-sitekey
+        try:
+            turnstile_divs = sb.find_elements('css selector', 
+                '[data-sitekey], .cf-turnstile, [class*="turnstile"]')
+            for elem in turnstile_divs:
+                sk = elem.get_attribute('data-sitekey')
+                if sk:
+                    sitekey = sk
+                    print(f"[2Captcha-Turnstile] Found sitekey in div: {sitekey}")
+                    break
+        except Exception as e:
+            print(f"[2Captcha-Turnstile] Method 1 failed: {e}")
+        
+        # Method 2: Extract from Turnstile iframe src
+        if not sitekey:
+            try:
+                turnstile_iframes = sb.find_elements('css selector', 
+                    'iframe[src*="challenges.cloudflare.com"]')
+                if turnstile_iframes:
+                    iframe_src = turnstile_iframes[0].get_attribute('src')
+                    # Extract sitekey from Cloudflare URL
+                    import re
+                    match = re.search(r'[?&]sitekey=([^&]+)', iframe_src)
+                    if match:
+                        sitekey = match.group(1)
+                        print(f"[2Captcha-Turnstile] Found sitekey in iframe: {sitekey}")
+            except Exception as e:
+                print(f"[2Captcha-Turnstile] Method 2 failed: {e}")
+        
+        # Method 3: Look in page source for Turnstile initialization
+        if not sitekey:
+            try:
+                page_source = sb.get_page_source()
+                import re
+                # Look for turnstile.render or data-sitekey in script tags
+                matches = re.findall(r'sitekey["\s:]+([0-9a-zA-Z_-]{20,})', page_source)
+                if matches:
+                    sitekey = matches[0]
+                    print(f"[2Captcha-Turnstile] Found sitekey in page source: {sitekey}")
+            except Exception as e:
+                print(f"[2Captcha-Turnstile] Method 3 failed: {e}")
+        
+        if not sitekey:
+            print("[2Captcha-Turnstile] ✗ Could not find Cloudflare Turnstile sitekey")
+            return False
+        
+        # Get current page URL
+        page_url = sb.get_current_url()
+        print(f"[2Captcha-Turnstile] Page URL: {page_url}")
+        print(f"[2Captcha-Turnstile] Sitekey: {sitekey}")
+        
+        # Prepare solver parameters
+        solver_params = {
+            'sitekey': sitekey,
+            'url': page_url,
+        }
+        
+        # Add proxy if provided (CRITICAL for matching IP)
+        if proxy_string:
+            # Parse proxy string: username:password@host:port
+            try:
+                if '@' in proxy_string:
+                    auth, server = proxy_string.split('@')
+                    user, password = auth.split(':')
+                    host, port = server.split(':')
+                    
+                    solver_params['proxy'] = {
+                        'type': 'HTTP',
+                        'uri': f"{host}:{port}",
+                        'login': user,
+                        'password': password,
+                    }
+                    print(f"[2Captcha-Turnstile] Using proxy: {host}:{port}")
+            except Exception as e:
+                print(f"[2Captcha-Turnstile] ⚠ Proxy parsing failed: {e}")
+        
+        # Submit Turnstile to 2Captcha
+        print(f"[2Captcha-Turnstile] Submitting to 2Captcha (timeout: {max_wait_seconds}s)...")
+        print("[2Captcha-Turnstile] This may take 30-60 seconds...")
+        
+        try:
+            # Use Turnstile method
+            result = solver.turnstile(**solver_params)
+            token = result.get('code')
+            
+            if not token:
+                print("[2Captcha-Turnstile] ✗ No solution received from 2Captcha")
+                return False
+            
+            print(f"[2Captcha-Turnstile] ✓ Solution received! Token length: {len(token)}")
+            
+        except Exception as e:
+            print(f"[2Captcha-Turnstile] ✗ 2Captcha API error: {e}")
+            return False
+        
+        # Inject the Turnstile token into the page
+        print("[2Captcha-Turnstile] Injecting solution into page...")
+        
+        inject_js = """
+            const token = arguments[0];
+            console.log('[2Captcha-Turnstile] Injecting token, length:', token.length);
+            
+            let injected = false;
+            
+            // Method 1: Find Turnstile response input/textarea
+            const responseInputs = document.querySelectorAll('input[name*="cf-turnstile-response"], textarea[name*="cf-turnstile-response"]');
+            if (responseInputs.length > 0) {
+                responseInputs.forEach((input, idx) => {
+                    input.value = token;
+                    console.log('[2Captcha-Turnstile] Injected into input', idx);
+                    injected = true;
+                });
+            }
+            
+            // Method 2: Look for hidden inputs with turnstile data
+            const hiddenInputs = document.querySelectorAll('input[type="hidden"][name*="turnstile"]');
+            if (hiddenInputs.length > 0) {
+                hiddenInputs.forEach((input, idx) => {
+                    input.value = token;
+                    console.log('[2Captcha-Turnstile] Injected into hidden input', idx);
+                    injected = true;
+                });
+            }
+            
+            // Method 3: Try to call Turnstile callback if it exists
+            if (typeof window.turnstile !== 'undefined' && window.turnstile.getResponse) {
+                try {
+                    // This might not work, but worth trying
+                    console.log('[2Captcha-Turnstile] Found window.turnstile object');
+                } catch (e) {
+                    console.error('[2Captcha-Turnstile] Turnstile object error:', e);
+                }
+            }
+            
+            return {success: injected, method: injected ? 'input_injection' : 'no_injection'};
+        """
+        
+        try:
+            result = sb.execute_script(inject_js, token)
+            print(f"[2Captcha-Turnstile] Injection result: {result}")
+        except Exception as e:
+            print(f"[2Captcha-Turnstile] ⚠ Injection error: {e}")
+        
+        # Wait for Cloudflare to validate
+        print("[2Captcha-Turnstile] Waiting for Cloudflare validation (5-10s)...")
+        sb.sleep(5.0 + random.random() * 5.0)
+        
+        # Take screenshot after injection
+        try:
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            shot = os.path.join(SCREENSHOTS_DIR, f"2captcha_turnstile_after_{ts}.png")
+            sb.save_screenshot(shot)
+            print(f"[2Captcha-Turnstile] Screenshot: {shot}")
+        except Exception:
+            pass
+        
+        print("[2Captcha-Turnstile] ✓ Solution injected successfully")
+        return True
+        
+    except Exception as e:
+        print(f"[2Captcha-Turnstile] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit: bool = True, proxy_string: str = None) -> bool:
     """
     Use 2Captcha API service (official SDK) to solve reCAPTCHA v2/v3 challenges (including image challenges).
@@ -1416,124 +1610,85 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     except Exception:
                         pass
                     
-                    # Use UC Mode CAPTCHA solving (works better than CDP for detection)
-                    print("[Login] Handling Cloudflare challenge with UC Mode...")
+                    # Use 2Captcha API to solve Cloudflare Turnstile challenge
+                    print("[Login] Handling Cloudflare challenge with 2Captcha API...")
                     
-                    # LOOP: Keep trying to solve CAPTCHA until form appears or max attempts reached
-                    captcha_max_attempts = 3  # Reduced to 3 - if it fails 3 times, IP is flagged
+                    # Get proxy string for 2Captcha (must match browser IP)
+                    captcha_proxy_string = proxy_string if proxy_string else None
+                    
+                    # Try 2Captcha Turnstile solver (up to 2 attempts)
+                    captcha_solved = False
+                    captcha_max_attempts = 2
+                    
                     for captcha_attempt in range(captcha_max_attempts):
-                        try:
-                            print(f"[Login] CAPTCHA attempt {captcha_attempt + 1}/{captcha_max_attempts}")
+                        print(f"[Login] 2Captcha attempt {captcha_attempt + 1}/{captcha_max_attempts}")
+                        
+                        # Take screenshot before solving
+                        ts_before = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                        shot_before = os.path.join(SCREENSHOTS_DIR, f"before_2captcha_{captcha_attempt+1}_{ts_before}.png")
+                        sb.save_screenshot(shot_before)
+                        print(f"[Login] Screenshot before: {shot_before}")
+                        
+                        # Solve Cloudflare Turnstile with 2Captcha
+                        if _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds=120, proxy_string=captcha_proxy_string):
+                            print("[Login] ✓ 2Captcha solved Cloudflare challenge!")
+                            captcha_solved = True
                             
-                            # Check if login form already appeared (CAPTCHA may be solved)
-                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                print("[Login] ✓ Login form visible - CAPTCHA cleared!")
-                                loaded = True
-                                break
-                            
-                            # CRITICAL: Only click if CAPTCHA iframe actually exists
-                            captcha_present = False
-                            try:
-                                captcha_present = sb.is_element_present("iframe[src*='challenges.cloudflare.com']") or \
-                                                 sb.is_element_present("iframe[title*='Widget containing']")
-                                if not captcha_present:
-                                    print("[Login] No CAPTCHA iframe detected - checking if form appeared...")
-                                    sb.sleep(2)
-                                    if sb.is_element_present("#username"):
-                                        print("[Login] ✓ Login form appeared without CAPTCHA!")
-                                        loaded = True
-                                        break
-                                    else:
-                                        print("[Login] No form yet, waiting for page to load...")
-                                        sb.sleep(3)
-                                        continue
-                            except Exception as e:
-                                print(f"[Login] CAPTCHA detection error: {e}")
-                            
-                            # Add random human-like delay before clicking
-                            human_delay = 2.0 + random.random() * 3.0  # 2-5 seconds (more realistic)
-                            print(f"[Login] Human-like delay before click: {human_delay:.2f}s")
-                            sb.sleep(human_delay)
-                            
-                            # Use official SeleniumBase UC method
-                            print("[Login] Attempting uc_gui_handle_captcha()...")
-                            sb.uc_gui_handle_captcha()
-                            print("[Login] ✓ uc_gui_handle_captcha() executed")
-                            
-                            # CRITICAL: Take screenshot AFTER clicking to see state
-                            ts_captcha = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                            shot_captcha = os.path.join(SCREENSHOTS_DIR, f"captcha_after_click_{captcha_attempt+1}_{ts_captcha}.png")
-                            sb.save_screenshot(shot_captcha)
-                            print(f"[Login] Screenshot saved: {shot_captcha}")
-                            
-                            # Wait for CAPTCHA to validate with random timing (more human-like)
-                            # CRITICAL: Cloudflare needs 5-10 seconds to fully validate
-                            validation_wait = 6.0 + random.random() * 4.0  # 6-10 seconds (random)
-                            print(f"[Login] Waiting for Cloudflare validation ({validation_wait:.1f}s)...")
-                            sb.sleep(validation_wait)
-                            
-                            # Take screenshot AFTER validation wait
-                            shot_after_wait = os.path.join(SCREENSHOTS_DIR, f"captcha_after_wait_{captcha_attempt+1}_{ts_captcha}.png")
-                            sb.save_screenshot(shot_after_wait)
-                            print(f"[Login] Screenshot after wait: {shot_after_wait}")
+                            # Wait for page to update
+                            print("[Login] Waiting for page to process solution...")
+                            sb.sleep(3)
                             
                             # Check if login form appeared
                             if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                print("[Login] ✓ Login form appeared after CAPTCHA validation!")
+                                print("[Login] ✓ Login form appeared after 2Captcha solution!")
                                 loaded = True
                                 break
-                            
-                            # Check if we're stuck in CAPTCHA loop (Cloudflare flagged us)
-                            page_source = sb.get_page_source()
-                            
-                            if "challenges.cloudflare.com" in page_source or "Just a moment" in page_source:
-                                print(f"[Login] ⚠ Cloudflare is still challenging (attempt {captcha_attempt+1})")
+                            else:
+                                print("[Login] Form not visible yet, waiting longer...")
+                                sb.sleep(3)
+                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                    print("[Login] ✓ Login form appeared!")
+                                    loaded = True
+                                    break
+                        else:
+                            print(f"[Login] ✗ 2Captcha failed on attempt {captcha_attempt + 1}")
+                    
+                    # If 2Captcha failed, fall back to UC Mode GUI clicking
+                    if not captcha_solved or not loaded:
+                        print("[Login] 2Captcha didn't work, falling back to UC Mode GUI clicking...")
+                        
+                        # Try UC Mode as fallback (1 attempt only)
+                        try:
+                            # Check if CAPTCHA is still present
+                            if sb.is_element_present("iframe[src*='challenges.cloudflare.com']"):
+                                print("[Login] Attempting uc_gui_handle_captcha() as fallback...")
+                                sb.uc_gui_handle_captcha()
                                 
-                                # If we've tried multiple times, the IP might be flagged
-                                if captcha_attempt >= 1:
-                                    print("[Login] ⚠ Multiple CAPTCHA challenges detected - IP may be flagged by Cloudflare")
-                                    print("[Login] This usually means:")
-                                    print("[Login]   1. Proxy IP is already flagged/burned")
-                                    print("[Login]   2. Too many recent login attempts from this IP")
-                                    print("[Login]   3. Need to rotate to a fresh proxy session")
-                                    
-                                    # Wait longer before retry to avoid triggering rate limits
-                                    retry_delay = 8.0 + random.random() * 4.0  # 8-12 seconds
-                                    print(f"[Login] Waiting {retry_delay:.1f}s before retry...")
-                                    sb.sleep(retry_delay)
-                                    
-                                continue
-                            
-                            print("[Login] No CAPTCHA or form detected - checking page state...")
-                            
-                            # Final screenshot of this attempt
-                            shot_final = os.path.join(SCREENSHOTS_DIR, f"cdp_captcha_final_{captcha_attempt+1}_{ts_captcha}.png")
-                            try:
-                                sb.cdp.save_screenshot(shot_final)
-                                print(f"[Login] Final screenshot: {shot_final}")
-                            except Exception:
-                                sb.save_screenshot(shot_final)
+                                # Wait and check
+                                print("[Login] Waiting for UC Mode to complete...")
+                                sb.sleep(8)
+                                
+                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                    print("[Login] ✓ Login form appeared after UC Mode fallback!")
+                                    loaded = True
+                                else:
+                                    print("[Login] UC Mode fallback didn't help")
+                            else:
+                                print("[Login] No CAPTCHA iframe found for UC Mode fallback")
                                 
                         except Exception as e:
-                            print(f"[Login] CAPTCHA attempt {captcha_attempt + 1} error: {e}")
-                            # Save error screenshot
-                            try:
-                                ts_err = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                                shot_err = os.path.join(SCREENSHOTS_DIR, f"cdp_captcha_error_{captcha_attempt+1}_{ts_err}.png")
-                                try:
-                                    sb.cdp.save_screenshot(shot_err)
-                                except Exception:
-                                    sb.save_screenshot(shot_err)
-                                print(f"[Login] Error screenshot: {shot_err}")
-                            except Exception:
-                                pass
+                            print(f"[Login] UC Mode fallback error: {e}")
                     
-                    # Check if we succeeded after all attempts
+                    # Check if we succeeded
                     if loaded:
-                        print("[Login] ✓ CAPTCHA solving successful with CDP Mode!")
+                        print("[Login] ✓ CAPTCHA solving successful!")
                         break
                     else:
-                        print(f"[Login] ✗ CAPTCHA not solved after {captcha_max_attempts} attempts")
+                        print(f"[Login] ✗ All CAPTCHA solving attempts failed")
+                        print("[Login] ℹ️ This likely means:")
+                        print("[Login]    - Cloudflare has flagged this proxy IP")
+                        print("[Login]    - Need to rotate to a fresh session/IP")
+                        print("[Login]    - Consider using a different proxy provider")
                         print("[Login] ℹ️ This likely means the proxy IP is flagged/burned by Cloudflare")
                         print("[Login] ℹ️ Recommendation: Rotate to a new proxy session or use different IP range")
                     
