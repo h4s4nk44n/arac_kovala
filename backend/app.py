@@ -1778,46 +1778,92 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     # CRITICAL: Intercept turnstile.render() to capture sitekey dynamically
                     print("[Login] Installing Turnstile render interceptor...")
                     try:
+                        # Clear console and inject interceptor (based on proven method)
                         sb.execute_script("""
-                            // Intercept window.turnstile.render to capture parameters
-                            window._turnstileParams = null;
-                            
-                            if (window.turnstile) {
-                                const originalRender = window.turnstile.render;
-                                window.turnstile.render = function(container, params) {
-                                    console.log('[Interceptor] Turnstile render called with params:', params);
-                                    window._turnstileParams = params;
-                                    return originalRender.call(this, container, params);
-                                };
-                            } else {
-                                // If turnstile not loaded yet, intercept when it loads
-                                Object.defineProperty(window, 'turnstile', {
-                                    set: function(value) {
-                                        this._turnstileObj = value;
-                                        if (value && value.render) {
-                                            const originalRender = value.render;
-                                            value.render = function(container, params) {
-                                                console.log('[Interceptor] Turnstile render called with params:', params);
-                                                window._turnstileParams = params;
-                                                return originalRender.call(this, container, params);
-                                            };
-                                        }
-                                    },
-                                    get: function() {
-                                        return this._turnstileObj;
-                                    },
-                                    configurable: true
-                                });
-                            }
-                            console.log('[Interceptor] Turnstile render interceptor installed');
+                            console.clear = () => console.log('Console was cleared');
+                            const i = setInterval(() => {
+                                if (window.turnstile) {
+                                    clearInterval(i);
+                                    window.turnstile.render = (a, b) => {
+                                        let params = {
+                                            sitekey: b.sitekey,
+                                            pageurl: window.location.href,
+                                            data: b.cData,
+                                            pagedata: b.chlPageData,
+                                            action: b.action,
+                                            userAgent: navigator.userAgent,
+                                            json: 1
+                                        };
+                                        console.log('intercepted-params:' + JSON.stringify(params));
+                                        window.cfCallback = b.callback;
+                                        window._turnstileParams = params;
+                                        return;
+                                    }
+                                }
+                            }, 50);
                         """)
                         print("[Login] ✓ Turnstile interceptor installed")
                         
-                        # Wait for Turnstile to potentially render
-                        sb.sleep(3)
+                        # Wait for Turnstile to render and parameters to be captured
+                        print("[Login] Waiting for Turnstile to render (5s)...")
+                        sb.sleep(5)
                         
                     except Exception as e:
                         print(f"[Login] Interceptor installation failed: {e}")
+                    
+                    # EXTRACT PARAMETERS FROM BROWSER CONSOLE LOGS
+                    print("[Login] Checking browser console logs for intercepted parameters...")
+                    captcha_params_from_logs = None
+                    try:
+                        # Get browser logs (works with SeleniumBase UC mode)
+                        logs = sb.driver.get_log("browser")
+                        
+                        for log in logs:
+                            log_message = log.get("message", "")
+                            if "intercepted-params:" in log_message:
+                                print(f"[Login] Found intercepted params in log: {log_message[:200]}...")
+                                
+                                # Extract JSON from log message
+                                # Format: "... intercepted-params:{JSON}..."
+                                import re
+                                match = re.search(r'intercepted-params:({.*?})"', log_message)
+                                if not match:
+                                    # Try without quotes at end
+                                    match = re.search(r'intercepted-params:({.*})', log_message)
+                                
+                                if match:
+                                    json_string = match.group(1).replace('\\', '')
+                                    try:
+                                        import json
+                                        captcha_params_from_logs = json.loads(json_string)
+                                        print(f"[Login] ✓ Successfully parsed intercepted parameters!")
+                                        print(f"[Login]   Sitekey: {captcha_params_from_logs.get('sitekey', 'N/A')}")
+                                        print(f"[Login]   Page URL: {captcha_params_from_logs.get('pageurl', 'N/A')}")
+                                        print(f"[Login]   Action: {captcha_params_from_logs.get('action', 'N/A')}")
+                                        print(f"[Login]   Data: {captcha_params_from_logs.get('data', 'N/A')}")
+                                        break
+                                    except json.JSONDecodeError as e:
+                                        print(f"[Login] Failed to parse JSON: {e}")
+                                        print(f"[Login] JSON string was: {json_string[:200]}")
+                        
+                        if not captcha_params_from_logs:
+                            print("[Login] No intercepted parameters found in console logs")
+                            
+                    except Exception as e:
+                        print(f"[Login] Error reading browser logs: {e}")
+                        import traceback
+                        traceback.print_exc()
+                    
+                    # FALLBACK: Try to read from window._turnstileParams
+                    if not captcha_params_from_logs:
+                        print("[Login] Trying to read from window._turnstileParams...")
+                        try:
+                            captcha_params_from_logs = sb.execute_script("return window._turnstileParams;")
+                            if captcha_params_from_logs:
+                                print(f"[Login] ✓ Found parameters in window object!")
+                                print(f"[Login]   Sitekey: {captcha_params_from_logs.get('sitekey', 'N/A')}")
+                        except Exception as e:
+                            print(f"[Login] Error reading window._turnstileParams: {e}")
                     
                     # IMPORTANT: Check what type of Cloudflare challenge this is
                     challenge_type = None
@@ -1920,6 +1966,17 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 parametersSource: window._turnstileParams ? 'intercepted' : (sitekey ? 'html' : 'none')
                             };
                         """)
+                        
+                        # OVERRIDE with console log parameters if we found them
+                        if captcha_params_from_logs:
+                            print(f"[Login] Overriding challenge_info with console log parameters")
+                            challenge_info['turnstileSitekey'] = captcha_params_from_logs.get('sitekey')
+                            challenge_info['turnstileAction'] = captcha_params_from_logs.get('action')
+                            challenge_info['turnstileCData'] = captcha_params_from_logs.get('data')
+                            challenge_info['turnstilePageData'] = captcha_params_from_logs.get('pagedata')
+                            challenge_info['turnstilePageUrl'] = captcha_params_from_logs.get('pageurl')
+                            challenge_info['parametersSource'] = 'console-logs'
+                        
                         print(f"[Login] Challenge detection:")
                         print(f"[Login]   Parameters source: {challenge_info.get('parametersSource', 'unknown')}")
                         print(f"[Login]   Turnstile sitekey: {challenge_info.get('turnstileSitekey', 'None')}")
