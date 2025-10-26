@@ -668,22 +668,41 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
             iframes = sb.find_elements('css selector',
                 'iframe[src*="challenges.cloudflare.com"], iframe[title*="Cloudflare" i], iframe[src*="turnstile"]')
             if iframes:
+                print(f"[Cloudflare] Detected {len(iframes)} challenge iframe(s)")
                 return True
             
             # Check for non-iframe Cloudflare challenges (direct page)
             html = (sb.get_page_source() or '').lower()
             url = (sb.get_current_url() or '').lower()
             
-            # Cloudflare challenge indicators
-            if "challenges.cloudflare.com" in url:
-                return True
-            if "verify you are human" in html or "gerçek kişi olduğunuzu doğrulayın" in html:
-                return True
-            if "cloudflare" in html and ("checking" in html or "kontrol" in html):
-                return True
-                
+            # Debug: Print what we're seeing
+            print(f"[Cloudflare Debug] URL: {url[:100]}...")
+            
+            # Cloudflare challenge indicators (multiple patterns for reliability)
+            indicators = [
+                ("URL contains challenges.cloudflare", "challenges.cloudflare.com" in url),
+                ("URL contains /cdn-cgi/", "/cdn-cgi/" in url),
+                ("HTML contains 'verify you are human'", "verify you are human" in html),
+                ("HTML contains Turkish verification text", any(x in html for x in [
+                    "gerçek kişi", "gercek kisi", "doğrulayın", "dogrula"
+                ])),
+                ("HTML contains 'cloudflare'", "cloudflare" in html),
+                ("HTML contains challenge page markers", any(x in html for x in [
+                    "challenge-platform", "cf-challenge", "ray id:", "checking your browser"
+                ])),
+                ("Page title contains Cloudflare", any(x in html for x in [
+                    "<title>just a moment", "<title>bir an"
+                ])),
+            ]
+            
+            for description, condition in indicators:
+                if condition:
+                    print(f"[Cloudflare] ✓ Challenge detected: {description}")
+                    return True
+                    
             return False
-        except Exception:
+        except Exception as e:
+            print(f"[Cloudflare] Detection error: {e}")
             return False
 
     def _cleared() -> bool:
@@ -702,16 +721,25 @@ def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
             
             # Challenge is cleared if:
             # - No iframe present
-            # - URL doesn't contain challenges.cloudflare.com
+            # - URL doesn't contain challenges.cloudflare.com or /cdn-cgi/
             # - Page doesn't show verification prompts
-            text_present = (
-                "gerçek kişi olduğunuzu doğrulayın" in html 
-                or "verify you are human" in html
-                or ("cloudflare" in html and ("checking" in html or "challenge" in html))
-                or "challenges.cloudflare.com" in url
-            )
-            return (not has_iframe) and (not text_present)
-        except Exception:
+            text_present = any([
+                "gerçek kişi" in html,
+                "gercek kisi" in html,
+                "verify you are human" in html,
+                "checking your browser" in html,
+                ("cloudflare" in html and "challenge" in html),
+                "challenges.cloudflare.com" in url,
+                "/cdn-cgi/" in url,
+                "ray id:" in html,
+            ])
+            
+            cleared = (not has_iframe) and (not text_present)
+            if cleared:
+                print("[Cloudflare] Challenge appears to be cleared")
+            return cleared
+        except Exception as e:
+            print(f"[Cloudflare] Clear detection error: {e}")
             return False
 
     if not _challenge_present():
@@ -1364,19 +1392,46 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     sb.get(login_url)
                     sb.sleep(1.5 + random.random() * 1.5)
                     
-                    # Try to solve any captchas/challenges BEFORE checking for rate-limit
-                    try:
-                        _bypass_turnstile_if_present(sb, 40)
-                    except Exception:
-                        pass
-                    try:
-                        _try_uc_gui_click_captcha(sb, 45)
-                    except Exception:
-                        pass
-                    try:
-                        _solve_cloudflare_checkbox(sb, 60)
-                    except Exception:
-                        pass
+                    # CRITICAL: Check for Cloudflare/Turnstile challenges in a loop
+                    # Sometimes challenges appear multiple times or take time to process
+                    print("[Login] Checking for challenges...")
+                    max_challenge_attempts = 3
+                    for challenge_attempt in range(max_challenge_attempts):
+                        print(f"[Login] Challenge check attempt {challenge_attempt + 1}/{max_challenge_attempts}")
+                        
+                        # Try Cloudflare checkbox first (most common)
+                        cloudflare_detected = False
+                        try:
+                            cloudflare_detected = _solve_cloudflare_checkbox(sb, 60)
+                            if cloudflare_detected:
+                                print(f"[Login] Cloudflare challenge processed on attempt {challenge_attempt + 1}")
+                                sb.sleep(2)  # Wait for page to settle
+                        except Exception as e:
+                            print(f"[Login] Cloudflare solver error: {e}")
+                        
+                        # Try Turnstile
+                        try:
+                            _bypass_turnstile_if_present(sb, 40)
+                        except Exception as e:
+                            print(f"[Login] Turnstile solver error: {e}")
+                        
+                        # Try UC GUI click method
+                        try:
+                            _try_uc_gui_click_captcha(sb, 45)
+                        except Exception as e:
+                            print(f"[Login] UC GUI click error: {e}")
+                        
+                        # Check if we've reached the login form (success!)
+                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                            print(f"[Login] ✓ Login form detected after challenge attempt {challenge_attempt + 1}")
+                            break
+                        
+                        # If no challenges were detected and no login form, might be done
+                        if not cloudflare_detected and challenge_attempt > 0:
+                            print("[Login] No more challenges detected")
+                            break
+                        
+                        sb.sleep(1.5)
                     
                     # NOW check for rate-limit page (after captcha attempts)
                     try:
@@ -1954,18 +2009,44 @@ def scrape_sahibinden(sb, url, known_posts):
     # Navigate to target using the loaded/seeded session
     try:
         sb.get(url)
-        try:
-            _bypass_turnstile_if_present(sb, 30)
-        except Exception:
-            pass
-        try:
-            _try_uc_gui_click_captcha(sb, 45)
-        except Exception:
-            pass
-        try:
-            _solve_cloudflare_checkbox(sb, 60)
-        except Exception:
-            pass
+        
+        # CRITICAL: Check for challenges in a loop (same as login flow)
+        print("[Scrape] Checking for challenges after navigation...")
+        max_challenge_attempts = 3
+        for challenge_attempt in range(max_challenge_attempts):
+            print(f"[Scrape] Challenge check attempt {challenge_attempt + 1}/{max_challenge_attempts}")
+            
+            cloudflare_detected = False
+            try:
+                cloudflare_detected = _solve_cloudflare_checkbox(sb, 60)
+                if cloudflare_detected:
+                    print(f"[Scrape] Cloudflare challenge processed on attempt {challenge_attempt + 1}")
+                    sb.sleep(2)
+            except Exception as e:
+                print(f"[Scrape] Cloudflare solver error: {e}")
+            
+            try:
+                _bypass_turnstile_if_present(sb, 30)
+            except Exception as e:
+                print(f"[Scrape] Turnstile solver error: {e}")
+            
+            try:
+                _try_uc_gui_click_captcha(sb, 45)
+            except Exception as e:
+                print(f"[Scrape] UC GUI click error: {e}")
+            
+            # Check if we've reached the search results (success!)
+            if sb.is_element_present("tr.searchResultsItem"):
+                print(f"[Scrape] ✓ Search results detected after challenge attempt {challenge_attempt + 1}")
+                break
+            
+            # If no challenges detected and not first attempt, likely done
+            if not cloudflare_detected and challenge_attempt > 0:
+                print("[Scrape] No more challenges detected")
+                break
+            
+            sb.sleep(1.5)
+        
         try:
             # Use shorter dwell time for scraping (1-3s) vs login (3-8s)
             _humanize_session(sb, moves=6, dwell_time_sec=1.0 + random.random() * 2.0)
