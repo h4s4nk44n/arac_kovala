@@ -1141,11 +1141,26 @@ def login_with_proxy_and_save_cookies_with_retry(target_url: str, max_retries: i
     """
     Wrapper around login_with_proxy_and_save_cookies with exponential backoff retry logic.
     If proxy IP gets rate-limited, rotates to a new session and retries.
+    
+    IMPORTANT: If cookies exist from a previous 2FA session, we skip login and use those cookies.
     """
     for attempt in range(1, max_retries + 1):
         print(f"[Proxy Login] Attempt {attempt}/{max_retries}")
+        
+        # Check if we already have cookies from a 2FA session
+        if attempt > 1 and os.path.exists(SESSION_COOKIE_FILE):
+            print("[Proxy Login] ✓ Found existing cookies from previous attempt (possibly 2FA session)")
+            print("[Proxy Login] Skipping login, will use existing cookies for scraping")
+            return True  # Use the cookies we already have
+        
         success = login_with_proxy_and_save_cookies(target_url)
         if success:
+            return True
+        
+        # If login failed but cookies were saved (2FA case), don't retry - use those cookies
+        if os.path.exists(SESSION_COOKIE_FILE):
+            print("[Proxy Login] ✓ Cookies saved despite login failure (2FA case)")
+            print("[Proxy Login] Will use these cookies for scraping")
             return True
         
         if attempt < max_retries:
