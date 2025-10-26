@@ -1775,6 +1775,50 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     # COMPREHENSIVE CLOUDFLARE TURNSTILE DETECTION & SOLVING
                     print("[Login] Searching for Cloudflare Turnstile (including shadow-root/iframe)...")
                     
+                    # CRITICAL: Intercept turnstile.render() to capture sitekey dynamically
+                    print("[Login] Installing Turnstile render interceptor...")
+                    try:
+                        sb.execute_script("""
+                            // Intercept window.turnstile.render to capture parameters
+                            window._turnstileParams = null;
+                            
+                            if (window.turnstile) {
+                                const originalRender = window.turnstile.render;
+                                window.turnstile.render = function(container, params) {
+                                    console.log('[Interceptor] Turnstile render called with params:', params);
+                                    window._turnstileParams = params;
+                                    return originalRender.call(this, container, params);
+                                };
+                            } else {
+                                // If turnstile not loaded yet, intercept when it loads
+                                Object.defineProperty(window, 'turnstile', {
+                                    set: function(value) {
+                                        this._turnstileObj = value;
+                                        if (value && value.render) {
+                                            const originalRender = value.render;
+                                            value.render = function(container, params) {
+                                                console.log('[Interceptor] Turnstile render called with params:', params);
+                                                window._turnstileParams = params;
+                                                return originalRender.call(this, container, params);
+                                            };
+                                        }
+                                    },
+                                    get: function() {
+                                        return this._turnstileObj;
+                                    },
+                                    configurable: true
+                                });
+                            }
+                            console.log('[Interceptor] Turnstile render interceptor installed');
+                        """)
+                        print("[Login] ✓ Turnstile interceptor installed")
+                        
+                        # Wait for Turnstile to potentially render
+                        sb.sleep(3)
+                        
+                    except Exception as e:
+                        print(f"[Login] Interceptor installation failed: {e}")
+                    
                     # IMPORTANT: Check what type of Cloudflare challenge this is
                     challenge_type = None
                     try:
@@ -1811,19 +1855,34 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 }
                             }
                             
-                            // 1. Check for standard Turnstile div with data-sitekey
+                            // 1. Check intercepted parameters from turnstile.render()
                             let sitekey = null;
-                            const turnstileDiv = document.querySelector('div[data-sitekey]');
-                            if (turnstileDiv) {
-                                sitekey = turnstileDiv.getAttribute('data-sitekey');
+                            let action = null;
+                            let cData = null;
+                            
+                            if (window._turnstileParams) {
+                                console.log('[Detection] Found intercepted Turnstile params:', window._turnstileParams);
+                                sitekey = window._turnstileParams.sitekey || window._turnstileParams['sitekey'];
+                                action = window._turnstileParams.action || window._turnstileParams['action'];
+                                cData = window._turnstileParams.cData || window._turnstileParams['cData'] || window._turnstileParams.data;
                             }
                             
-                            // 2. Check in shadow roots
+                            // 2. Check for standard Turnstile div with data-sitekey
+                            if (!sitekey) {
+                                const turnstileDiv = document.querySelector('div[data-sitekey]');
+                                if (turnstileDiv) {
+                                    sitekey = turnstileDiv.getAttribute('data-sitekey');
+                                    action = turnstileDiv.getAttribute('data-action');
+                                    cData = turnstileDiv.getAttribute('data-cdata');
+                                }
+                            }
+                            
+                            // 3. Check in shadow roots
                             if (!sitekey) {
                                 sitekey = findTurnstileSitekeyInShadow(document);
                             }
                             
-                            // 3. Extract from Turnstile iframe src
+                            // 4. Extract from Turnstile iframe src
                             if (!sitekey) {
                                 const turnstileIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
                                 if (turnstileIframe) {
@@ -1831,7 +1890,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 }
                             }
                             
-                            // 4. Extract from any iframe with challenge platform URL
+                            // 5. Extract from any iframe with challenge platform URL
                             if (!sitekey) {
                                 const allIframes = document.querySelectorAll('iframe');
                                 for (const iframe of allIframes) {
@@ -1854,12 +1913,20 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                                 document.body.innerText.includes('insan olduğunuzu'),
                                 bodyTextStart: document.body.innerText.substring(0, 300),
                                 turnstileSitekey: sitekey,
-                                hasTurnstileDiv: turnstileDiv !== null,
-                                turnstileIframeCount: document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]').length
+                                turnstileAction: action,
+                                turnstileCData: cData,
+                                hasTurnstileDiv: document.querySelector('div[data-sitekey]') !== null,
+                                turnstileIframeCount: document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]').length,
+                                parametersSource: window._turnstileParams ? 'intercepted' : (sitekey ? 'html' : 'none')
                             };
                         """)
                         print(f"[Login] Challenge detection:")
-                        print(f"[Login]   Turnstile sitekey found: {challenge_info.get('turnstileSitekey', 'None')}")
+                        print(f"[Login]   Parameters source: {challenge_info.get('parametersSource', 'unknown')}")
+                        print(f"[Login]   Turnstile sitekey: {challenge_info.get('turnstileSitekey', 'None')}")
+                        if challenge_info.get('turnstileAction'):
+                            print(f"[Login]   Turnstile action: {challenge_info.get('turnstileAction')}")
+                        if challenge_info.get('turnstileCData'):
+                            print(f"[Login]   Turnstile cData: {challenge_info.get('turnstileCData')}")
                         print(f"[Login]   Turnstile script: {challenge_info.get('hasTurnstileScript')}")
                         print(f"[Login]   Turnstile iframe count: {challenge_info.get('turnstileIframeCount')}")
                         print(f"[Login]   Managed challenge: {challenge_info.get('hasManagedChallenge')}")
