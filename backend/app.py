@@ -1895,59 +1895,102 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                         # This is the type sahibinden.com uses (not standard Turnstile widget)
                         if challenge_info.get('hasManagedChallenge') or challenge_info.get('hasCheckingText'):
                             print("[Login] ✓ Detected Cloudflare Managed Challenge")
-                            print("[Login] This challenge type requires SeleniumBase UC Mode (2Captcha doesn't support it)")
-                            print("[Login] Using uc_gui_handle_captcha() method...")
+                            print("[Login] This challenge requires SeleniumBase UC Mode")
                             
-                            # Wait for challenge to fully render
-                            sb.sleep(3)
+                            # Try up to 3 times to solve the challenge
+                            max_challenge_attempts = 3
+                            challenge_solved = False
                             
-                            # Take screenshot before
-                            try:
-                                ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                                shot = os.path.join(SCREENSHOTS_DIR, f"managed_challenge_before_{ts}.png")
-                                sb.save_screenshot(shot)
-                                print(f"[Login] Screenshot: {shot}")
-                            except Exception:
-                                pass
-                            
-                            # Use SeleniumBase's built-in method
-                            try:
-                                print("[Login] Executing uc_gui_handle_captcha()...")
-                                sb.uc_gui_handle_captcha()
-                                print("[Login] ✓ uc_gui_handle_captcha() completed")
+                            for challenge_attempt in range(max_challenge_attempts):
+                                print(f"[Login] Challenge solving attempt {challenge_attempt + 1}/{max_challenge_attempts}")
                                 
-                                # Wait for Cloudflare to validate (needs time!)
-                                print("[Login] Waiting for Cloudflare validation (12s)...")
-                                sb.sleep(12)
-                                
-                                # Take screenshot after
                                 try:
-                                    shot_after = os.path.join(SCREENSHOTS_DIR, f"managed_challenge_after_{ts}.png")
+                                    # Take screenshot before
+                                    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                                    shot = os.path.join(SCREENSHOTS_DIR, f"challenge_before_attempt{challenge_attempt + 1}_{ts}.png")
+                                    sb.save_screenshot(shot)
+                                    print(f"[Login] Screenshot before: {shot}")
+                                    
+                                    # Wait for challenge to be fully rendered
+                                    print("[Login] Waiting for challenge to render (5s)...")
+                                    sb.sleep(5)
+                                    
+                                    # Use SeleniumBase's built-in CAPTCHA handler
+                                    print("[Login] Executing uc_gui_handle_captcha()...")
+                                    sb.uc_gui_handle_captcha()
+                                    print("[Login] ✓ uc_gui_handle_captcha() completed")
+                                    
+                                    # Wait for Cloudflare to validate
+                                    print("[Login] Waiting for Cloudflare validation (15s)...")
+                                    sb.sleep(15)
+                                    
+                                    # Take screenshot after
+                                    shot_after = os.path.join(SCREENSHOTS_DIR, f"challenge_after_attempt{challenge_attempt + 1}_{ts}.png")
                                     sb.save_screenshot(shot_after)
                                     print(f"[Login] Screenshot after: {shot_after}")
-                                except Exception:
-                                    pass
-                                
-                                # Check if login form appeared
-                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                    print("[Login] ✓ Login form appeared after challenge!")
-                                    loaded = True
-                                    break
-                                else:
-                                    print("[Login] Form not visible yet...")
-                                    # Check page state
+                                    
+                                    # Check if login form appeared
+                                    form_visible = False
+                                    try:
+                                        form_visible = sb.is_element_present("#username") and sb.is_element_present("#password")
+                                    except Exception:
+                                        pass
+                                    
+                                    if form_visible:
+                                        print(f"[Login] ✓ Login form appeared after attempt {challenge_attempt + 1}!")
+                                        loaded = True
+                                        challenge_solved = True
+                                        break
+                                    
+                                    # Check if still on challenge page
                                     current_url = sb.get_current_url()
                                     page_title = sb.get_title()
                                     print(f"[Login] Current URL: {current_url}")
                                     print(f"[Login] Page title: {page_title}")
                                     
-                                    # Wait a bit more
-                                    print("[Login] Waiting additional 8 seconds...")
-                                    sb.sleep(8)
+                                    # Check page text for challenge indicators
+                                    page_text = sb.execute_script("return document.body.innerText;").lower()
+                                    if "güvenliğini gözden" in page_text or "checking" in page_text or "doğrulayın" in page_text:
+                                        print(f"[Login] ⚠ Still on challenge page after attempt {challenge_attempt + 1}")
+                                        
+                                        if challenge_attempt < max_challenge_attempts - 1:
+                                            print("[Login] Waiting 5s before retry...")
+                                            sb.sleep(5)
+                                            # Refresh page to get new challenge
+                                            print("[Login] Refreshing page for new challenge...")
+                                            sb.refresh()
+                                            sb.sleep(5)
+                                    else:
+                                        # Not on challenge page, check if form appeared
+                                        print("[Login] Not on challenge page anymore, waiting for form...")
+                                        sb.sleep(8)
+                                        
+                                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                            print("[Login] ✓ Login form appeared after extended wait!")
+                                            loaded = True
+                                            challenge_solved = True
+                                            break
+                                        else:
+                                            print("[Login] ⚠ Form still not visible")
                                     
-                                    if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                        print("[Login] ✓ Login form appeared after extended wait!")
-                                        loaded = True
+                                except Exception as e:
+                                    print(f"[Login] ✗ Challenge attempt {challenge_attempt + 1} error: {e}")
+                                    import traceback
+                                    traceback.print_exc()
+                                    
+                                    if challenge_attempt < max_challenge_attempts - 1:
+                                        print("[Login] Waiting 5s before retry...")
+                                        sb.sleep(5)
+                            
+                            if challenge_solved:
+                                print("[Login] ✓ Challenge solved successfully!")
+                                break
+                            else:
+                                print("[Login] ✗ Failed to solve challenge after all attempts")
+                                print("[Login] This may indicate:")
+                                print("[Login]   - Proxy IP is flagged by Cloudflare")
+                                print("[Login]   - Challenge requires manual interaction")
+                                print("[Login]   - Need different proxy or IP rotation")
                                         break
                                     else:
                                         print("[Login] ✗ Login form still not visible")
