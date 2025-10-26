@@ -658,82 +658,177 @@ def _try_uc_gui_click_captcha(sb, max_wait_seconds: int = 60) -> bool:
 
 def _solve_cloudflare_checkbox(sb, max_wait_seconds: int = 60) -> bool:
     """
-    Handle Cloudflare "I'm human" checkbox challenges embedded in an iframe.
+    Handle Cloudflare "I'm human" checkbox challenges - both iframe and non-iframe versions.
     Returns True if we detected and attempted to solve the challenge (and it cleared),
     False if nothing was detected or could not be solved within the time window.
     """
     def _challenge_present() -> bool:
         try:
-            # Look for Cloudflare challenge iframe(s)
+            # Check for iframe-based challenges
             iframes = sb.find_elements('css selector',
                 'iframe[src*="challenges.cloudflare.com"], iframe[title*="Cloudflare" i], iframe[src*="turnstile"]')
-            return bool(iframes)
+            if iframes:
+                return True
+            
+            # Check for non-iframe Cloudflare challenges (direct page)
+            html = (sb.get_page_source() or '').lower()
+            url = (sb.get_current_url() or '').lower()
+            
+            # Cloudflare challenge indicators
+            if "challenges.cloudflare.com" in url:
+                return True
+            if "verify you are human" in html or "gerçek kişi olduğunuzu doğrulayın" in html:
+                return True
+            if "cloudflare" in html and ("checking" in html or "kontrol" in html):
+                return True
+                
+            return False
         except Exception:
             return False
 
     def _cleared() -> bool:
         try:
             # Heuristic: no challenge iframe visible and page text not showing the prompt
-            has_iframe = _challenge_present()
+            has_iframe = False
+            try:
+                iframes = sb.find_elements('css selector',
+                    'iframe[src*="challenges.cloudflare.com"], iframe[title*="Cloudflare" i], iframe[src*="turnstile"]')
+                has_iframe = bool(iframes)
+            except Exception:
+                pass
+            
             html = (sb.get_page_source() or '').lower()
-            text_present = ("gerçek kişi olduğunuzu doğrulayın" in html) or ("cloudflare" in html and "challenge" in html)
+            url = (sb.get_current_url() or '').lower()
+            
+            # Challenge is cleared if:
+            # - No iframe present
+            # - URL doesn't contain challenges.cloudflare.com
+            # - Page doesn't show verification prompts
+            text_present = (
+                "gerçek kişi olduğunuzu doğrulayın" in html 
+                or "verify you are human" in html
+                or ("cloudflare" in html and ("checking" in html or "challenge" in html))
+                or "challenges.cloudflare.com" in url
+            )
             return (not has_iframe) and (not text_present)
         except Exception:
             return False
 
     if not _challenge_present():
+        print("[Cloudflare] No challenge detected")
         return False
+    
+    print("[Cloudflare] Challenge detected! Attempting to solve...")
 
     start = time.time()
     while time.time() - start < max_wait_seconds:
         try:
             if _cleared():
+                print("[Cloudflare] ✓ Challenge cleared!")
                 return True
 
-            # Try each iframe and click a checkbox-like control
+            # METHOD 1: Try iframe-based challenges
             frames = sb.find_elements('css selector',
                 'iframe[src*="challenges.cloudflare.com"], iframe[title*="Cloudflare" i], iframe[src*="turnstile"]')
-            for fr in frames:
-                try:
-                    sb.driver.switch_to.frame(fr)
-                    for sel in (
-                        'input[type="checkbox"]',
-                        'div[role="checkbox"]',
-                        'label[for]',
-                        'button[type="submit"]',
-                        '#challenge-stage input[type="checkbox"]',
-                    ):
-                        try:
-                            if sb.is_element_present(sel):
-                                try:
-                                    sb.cdp.click(sel)
-                                except Exception:
+            if frames:
+                print(f"[Cloudflare] Found {len(frames)} challenge iframe(s), attempting to solve...")
+                for fr in frames:
+                    try:
+                        sb.driver.switch_to.frame(fr)
+                        for sel in (
+                            'input[type="checkbox"]',
+                            'div[role="checkbox"]',
+                            'label[for]',
+                            'button[type="submit"]',
+                            '#challenge-stage input[type="checkbox"]',
+                        ):
+                            try:
+                                if sb.is_element_present(sel):
+                                    print(f"[Cloudflare] Clicking iframe element: {sel}")
                                     try:
-                                        sb.js_click(sel)
+                                        sb.cdp.click(sel)
                                     except Exception:
                                         try:
-                                            sb.click(sel)
+                                            sb.js_click(sel)
                                         except Exception:
-                                            pass
-                                sb.sleep(1.5)
-                                break
+                                            try:
+                                                sb.click(sel)
+                                            except Exception:
+                                                pass
+                                    sb.sleep(2)
+                                    break
+                            except Exception:
+                                continue
+                    except Exception as e:
+                        print(f"[Cloudflare] Iframe solving error: {e}")
+                    finally:
+                        try:
+                            sb.driver.switch_to.default_content()
                         except Exception:
-                            continue
-                except Exception:
-                    pass
-                finally:
+                            pass
+            
+            # METHOD 2: Try non-iframe challenges (direct page buttons/checkboxes)
+            # These appear when Cloudflare shows challenge directly on the page (not in iframe)
+            else:
+                print("[Cloudflare] No iframe detected, looking for direct page elements...")
+                # Common Cloudflare challenge selectors (non-iframe)
+                selectors = [
+                    'input[type="checkbox"][id*="challenge"]',
+                    'input[type="checkbox"][name*="cf"]',
+                    'button[type="submit"]',
+                    'input[type="button"][value*="Verify"]',
+                    'input[type="button"][value*="Doğrula"]',
+                    'label[for*="challenge"]',
+                    'div[role="button"]',
+                    'div.challenge-button',
+                    'button.challenge-button',
+                    # Very broad fallback - any visible checkbox or button
+                    'input[type="checkbox"]:not([style*="display: none"])',
+                    'button:not([style*="display: none"])',
+                ]
+                
+                for sel in selectors:
                     try:
-                        sb.driver.switch_to.default_content()
-                    except Exception:
-                        pass
+                        if sb.is_element_visible(sel):
+                            print(f"[Cloudflare] Found visible element: {sel}, attempting UC click...")
+                            # Use UC mode's special click methods for anti-detection
+                            try:
+                                sb.cdp.click(sel)
+                                print(f"[Cloudflare] ✓ CDP click successful on {sel}")
+                            except Exception as e1:
+                                print(f"[Cloudflare] CDP click failed: {e1}, trying JS click...")
+                                try:
+                                    sb.js_click(sel)
+                                    print(f"[Cloudflare] ✓ JS click successful on {sel}")
+                                except Exception as e2:
+                                    print(f"[Cloudflare] JS click failed: {e2}, trying regular click...")
+                                    try:
+                                        sb.click(sel)
+                                        print(f"[Cloudflare] ✓ Regular click successful on {sel}")
+                                    except Exception as e3:
+                                        print(f"[Cloudflare] All click methods failed: {e3}")
+                                        continue
+                            
+                            sb.sleep(3)  # Wait for challenge to process
+                            
+                            # Check if cleared after this click
+                            if _cleared():
+                                print("[Cloudflare] ✓ Challenge cleared after click!")
+                                return True
+                            else:
+                                print("[Cloudflare] Challenge still present after click, continuing...")
+                    except Exception as e:
+                        continue
 
             # Small delay and re-check
-            sb.sleep(1.5)
+            sb.sleep(2)
             if _cleared():
+                print("[Cloudflare] ✓ Challenge cleared!")
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Cloudflare] Solving loop error: {e}")
 
+    print(f"[Cloudflare] ✗ Challenge NOT cleared after {max_wait_seconds}s timeout")
     return False
 
 def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit: bool = True, proxy_string: str = None) -> bool:
