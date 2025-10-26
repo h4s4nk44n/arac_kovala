@@ -1633,15 +1633,19 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                         
                         # Check if we're still on 2FA or if we can browse
                         final_url = sb.get_current_url()
-                        if "iki-asamali-dogrulama" not in final_url and "twoFactor" not in final_url:
+                        if "iki-asamali-dogrulama" not in final_url and "twoFactor" not in final_url and "giris" not in final_url:
                             print("[Login] ✓ Successfully navigated away from 2FA! Cookies may be valid.")
+                            # Cookies from 2FA page allow browsing - treat as success!
+                            # Continue with normal flow (save cookies, navigate to target)
+                            print("[Login] Treating as successful login (cookies work for browsing).")
+                            # Don't return here - let it continue to save cookies and navigate to target
                         else:
-                            print("[Login] ⚠ Still stuck on 2FA. Manual intervention required.")
+                            print("[Login] ⚠ Still stuck on 2FA or login page. Manual intervention required.")
                             print("[Login] SOLUTION: Log in manually and upload cookies to /data/session_cookies.json")
+                            return False  # Only return False if truly stuck
                     except Exception as e:
                         print(f"[Login] Navigation attempt failed: {e}")
-                    
-                    return False  # Login technically failed due to 2FA
+                        return False
                     
             except Exception as e:
                 print(f"[Login] Error checking for 2FA: {e}")
