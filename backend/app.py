@@ -1387,49 +1387,44 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             for login_url in login_urls:
                 try:
                     attempt_idx += 1
-                    # Use regular get() since uc=False (uc_open_with_reconnect only works with uc=True)
+                    # CRITICAL: Use uc_open_with_reconnect instead of regular get() for better stealth
                     print(f"Loading login page: {login_url}")
-                    sb.get(login_url)
+                    sb.uc_open_with_reconnect(login_url, reconnect_time=4)
                     sb.sleep(1.5 + random.random() * 1.5)
                     
-                    # CRITICAL: Check for Cloudflare/Turnstile challenges in a loop
-                    # Sometimes challenges appear multiple times or take time to process
-                    print("[Login] Checking for challenges...")
-                    max_challenge_attempts = 3
+                    # CRITICAL: Use SeleniumBase's official UC mode CAPTCHA methods
+                    # These are specifically designed to bypass Cloudflare/Turnstile challenges
+                    print("[Login] Checking for challenges with UC Mode methods...")
+                    max_challenge_attempts = 2
                     for challenge_attempt in range(max_challenge_attempts):
                         print(f"[Login] Challenge check attempt {challenge_attempt + 1}/{max_challenge_attempts}")
                         
-                        # Try Cloudflare checkbox first (most common)
-                        cloudflare_detected = False
                         try:
-                            cloudflare_detected = _solve_cloudflare_checkbox(sb, 60)
-                            if cloudflare_detected:
-                                print(f"[Login] Cloudflare challenge processed on attempt {challenge_attempt + 1}")
-                                sb.sleep(2)  # Wait for page to settle
+                            # Use official SeleniumBase UC mode method for Cloudflare/Turnstile
+                            # This uses PyAutoGUI to click in a human-like way
+                            print("[Login] Attempting sb.uc_gui_click_captcha()...")
+                            sb.uc_gui_click_captcha()
+                            print("[Login] ✓ uc_gui_click_captcha() executed")
+                            sb.sleep(3)  # Wait for challenge to process
                         except Exception as e:
-                            print(f"[Login] Cloudflare solver error: {e}")
+                            print(f"[Login] uc_gui_click_captcha error: {e}")
                         
-                        # Try Turnstile
+                        # Alternative: Try handle method (auto-detects and handles)
                         try:
-                            _bypass_turnstile_if_present(sb, 40)
+                            print("[Login] Attempting sb.uc_gui_handle_captcha()...")
+                            sb.uc_gui_handle_captcha()
+                            print("[Login] ✓ uc_gui_handle_captcha() executed")
+                            sb.sleep(2)
                         except Exception as e:
-                            print(f"[Login] Turnstile solver error: {e}")
-                        
-                        # Try UC GUI click method
-                        try:
-                            _try_uc_gui_click_captcha(sb, 45)
-                        except Exception as e:
-                            print(f"[Login] UC GUI click error: {e}")
+                            print(f"[Login] uc_gui_handle_captcha error: {e}")
                         
                         # Check if we've reached the login form (success!)
-                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                            print(f"[Login] ✓ Login form detected after challenge attempt {challenge_attempt + 1}")
-                            break
-                        
-                        # If no challenges were detected and no login form, might be done
-                        if not cloudflare_detected and challenge_attempt > 0:
-                            print("[Login] No more challenges detected")
-                            break
+                        try:
+                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                print(f"[Login] ✓ Login form detected after challenge attempt {challenge_attempt + 1}")
+                                break
+                        except Exception as e:
+                            print(f"[Login] Form check error: {e}")
                         
                         sb.sleep(1.5)
                     
@@ -2008,42 +2003,39 @@ def scrape_sahibinden(sb, url, known_posts):
 
     # Navigate to target using the loaded/seeded session
     try:
-        sb.get(url)
+        # Use UC mode's open method for better stealth
+        sb.uc_open_with_reconnect(url, reconnect_time=3)
         
-        # CRITICAL: Check for challenges in a loop (same as login flow)
-        print("[Scrape] Checking for challenges after navigation...")
-        max_challenge_attempts = 3
+        # CRITICAL: Use official SeleniumBase UC mode CAPTCHA methods
+        print("[Scrape] Checking for challenges with UC Mode methods...")
+        max_challenge_attempts = 2
         for challenge_attempt in range(max_challenge_attempts):
             print(f"[Scrape] Challenge check attempt {challenge_attempt + 1}/{max_challenge_attempts}")
             
-            cloudflare_detected = False
             try:
-                cloudflare_detected = _solve_cloudflare_checkbox(sb, 60)
-                if cloudflare_detected:
-                    print(f"[Scrape] Cloudflare challenge processed on attempt {challenge_attempt + 1}")
-                    sb.sleep(2)
+                # Use official method for Cloudflare/Turnstile
+                print("[Scrape] Attempting sb.uc_gui_click_captcha()...")
+                sb.uc_gui_click_captcha()
+                print("[Scrape] ✓ uc_gui_click_captcha() executed")
+                sb.sleep(2)
             except Exception as e:
-                print(f"[Scrape] Cloudflare solver error: {e}")
+                print(f"[Scrape] uc_gui_click_captcha error: {e}")
             
             try:
-                _bypass_turnstile_if_present(sb, 30)
+                print("[Scrape] Attempting sb.uc_gui_handle_captcha()...")
+                sb.uc_gui_handle_captcha()
+                print("[Scrape] ✓ uc_gui_handle_captcha() executed")
+                sb.sleep(2)
             except Exception as e:
-                print(f"[Scrape] Turnstile solver error: {e}")
-            
-            try:
-                _try_uc_gui_click_captcha(sb, 45)
-            except Exception as e:
-                print(f"[Scrape] UC GUI click error: {e}")
+                print(f"[Scrape] uc_gui_handle_captcha error: {e}")
             
             # Check if we've reached the search results (success!)
-            if sb.is_element_present("tr.searchResultsItem"):
-                print(f"[Scrape] ✓ Search results detected after challenge attempt {challenge_attempt + 1}")
-                break
-            
-            # If no challenges detected and not first attempt, likely done
-            if not cloudflare_detected and challenge_attempt > 0:
-                print("[Scrape] No more challenges detected")
-                break
+            try:
+                if sb.is_element_present("tr.searchResultsItem"):
+                    print(f"[Scrape] ✓ Search results detected after challenge attempt {challenge_attempt + 1}")
+                    break
+            except Exception as e:
+                print(f"[Scrape] Results check error: {e}")
             
             sb.sleep(1.5)
         
