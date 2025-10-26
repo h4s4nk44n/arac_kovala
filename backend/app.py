@@ -1387,46 +1387,67 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             for login_url in login_urls:
                 try:
                     attempt_idx += 1
-                    # CRITICAL: Use uc_open_with_reconnect instead of regular get() for better stealth
+                    # CRITICAL: Use uc_open_with_reconnect with proper reconnect_time
+                    # This disconnects chromedriver during page load to avoid detection
                     print(f"Loading login page: {login_url}")
                     sb.uc_open_with_reconnect(login_url, reconnect_time=4)
-                    sb.sleep(1.5 + random.random() * 1.5)
                     
-                    # CRITICAL: Use SeleniumBase's official UC mode CAPTCHA methods
-                    # These are specifically designed to bypass Cloudflare/Turnstile challenges
-                    print("[Login] Checking for challenges with UC Mode methods...")
-                    max_challenge_attempts = 2
-                    for challenge_attempt in range(max_challenge_attempts):
-                        print(f"[Login] Challenge check attempt {challenge_attempt + 1}/{max_challenge_attempts}")
+                    # Wait for Cloudflare challenge widget to render (if present)
+                    # The reconnect_time above handles initial load, now wait for JS to inject challenge
+                    print("[Login] Waiting for page to settle...")
+                    sb.sleep(2)
+                    
+                    # Check if login form is already visible (no challenge)
+                    try:
+                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                            print("[Login] ✓ Login form already visible (no challenge required)")
+                            loaded = True
+                            break
+                    except Exception:
+                        pass
+                    
+                    # Use SeleniumBase's official method to handle Cloudflare Turnstile
+                    # This method waits for the challenge AND waits for validation
+                    print("[Login] Handling Cloudflare challenge...")
+                    try:
+                        # Official SeleniumBase UC method - handles both detection and validation
+                        sb.uc_gui_handle_captcha()
+                        print("[Login] ✓ uc_gui_handle_captcha() completed")
                         
-                        try:
-                            # Use official SeleniumBase UC mode method for Cloudflare/Turnstile
-                            # This uses PyAutoGUI to click in a human-like way
-                            print("[Login] Attempting sb.uc_gui_click_captcha()...")
-                            sb.uc_gui_click_captcha()
-                            print("[Login] ✓ uc_gui_click_captcha() executed")
-                            sb.sleep(3)  # Wait for challenge to process
-                        except Exception as e:
-                            print(f"[Login] uc_gui_click_captcha error: {e}")
+                        # Wait for challenge to be validated and page to redirect/update
+                        print("[Login] Waiting for challenge validation...")
+                        sb.sleep(3)
                         
-                        # Alternative: Try handle method (auto-detects and handles)
-                        try:
-                            print("[Login] Attempting sb.uc_gui_handle_captcha()...")
-                            sb.uc_gui_handle_captcha()
-                            print("[Login] ✓ uc_gui_handle_captcha() executed")
-                            sb.sleep(2)
-                        except Exception as e:
-                            print(f"[Login] uc_gui_handle_captcha error: {e}")
-                        
-                        # Check if we've reached the login form (success!)
-                        try:
-                            if sb.is_element_present("#username") and sb.is_element_present("#password"):
-                                print(f"[Login] ✓ Login form detected after challenge attempt {challenge_attempt + 1}")
-                                break
-                        except Exception as e:
-                            print(f"[Login] Form check error: {e}")
-                        
-                        sb.sleep(1.5)
+                        # Verify login form appeared after challenge
+                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                            print("[Login] ✓ Login form appeared after challenge validation")
+                            loaded = True
+                            break
+                        else:
+                            print("[Login] Checking page state...")
+                            # Try alternative detection method - click using uc_gui_click_captcha
+                            try:
+                                sb.uc_gui_click_captcha()
+                                print("[Login] ✓ uc_gui_click_captcha() executed as fallback")
+                                sb.sleep(3)
+                                
+                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                    print("[Login] ✓ Login form appeared after fallback method")
+                                    loaded = True
+                                    break
+                            except Exception as e:
+                                print(f("[Login] Fallback click error: {e}")
+                    except Exception as e:
+                        print(f"[Login] Challenge handling error: {e}")
+                    
+                    # Final check for login form
+                    try:
+                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                            print(f"[Login] ✓ Login form detected")
+                            loaded = True
+                            break
+                    except Exception as e:
+                        print(f"[Login] Form detection error: {e}")
                     
                     # NOW check for rate-limit page (after captcha attempts)
                     try:
@@ -2003,41 +2024,39 @@ def scrape_sahibinden(sb, url, known_posts):
 
     # Navigate to target using the loaded/seeded session
     try:
-        # Use UC mode's open method for better stealth
+        # Use UC mode's uc_open_with_reconnect for stealth
+        print("[Scrape] Opening URL with UC mode...")
         sb.uc_open_with_reconnect(url, reconnect_time=3)
         
-        # CRITICAL: Use official SeleniumBase UC mode CAPTCHA methods
-        print("[Scrape] Checking for challenges with UC Mode methods...")
-        max_challenge_attempts = 2
-        for challenge_attempt in range(max_challenge_attempts):
-            print(f"[Scrape] Challenge check attempt {challenge_attempt + 1}/{max_challenge_attempts}")
-            
+        # Wait for page to settle
+        print("[Scrape] Waiting for page to settle...")
+        sb.sleep(2)
+        
+        # Check if search results are already visible (no challenge)
+        if sb.is_element_present("tr.searchResultsItem"):
+            print("[Scrape] ✓ Search results already visible (no challenge)")
+        else:
+            # Use official SeleniumBase UC method to handle any Cloudflare challenge
+            print("[Scrape] Handling potential Cloudflare challenge...")
             try:
-                # Use official method for Cloudflare/Turnstile
-                print("[Scrape] Attempting sb.uc_gui_click_captcha()...")
-                sb.uc_gui_click_captcha()
-                print("[Scrape] ✓ uc_gui_click_captcha() executed")
-                sb.sleep(2)
-            except Exception as e:
-                print(f"[Scrape] uc_gui_click_captcha error: {e}")
-            
-            try:
-                print("[Scrape] Attempting sb.uc_gui_handle_captcha()...")
+                # This method handles detection, clicking, AND waiting for validation
                 sb.uc_gui_handle_captcha()
-                print("[Scrape] ✓ uc_gui_handle_captcha() executed")
-                sb.sleep(2)
-            except Exception as e:
-                print(f"[Scrape] uc_gui_handle_captcha error: {e}")
-            
-            # Check if we've reached the search results (success!)
-            try:
+                print("[Scrape] ✓ uc_gui_handle_captcha() completed")
+                
+                # Wait for validation and page update
+                print("[Scrape] Waiting for validation...")
+                sb.sleep(3)
+                
+                # Verify results appeared
                 if sb.is_element_present("tr.searchResultsItem"):
-                    print(f"[Scrape] ✓ Search results detected after challenge attempt {challenge_attempt + 1}")
-                    break
+                    print("[Scrape] ✓ Results appeared after challenge")
+                else:
+                    # Fallback: try click method
+                    print("[Scrape] Trying fallback click method...")
+                    sb.uc_gui_click_captcha()
+                    sb.sleep(3)
             except Exception as e:
-                print(f"[Scrape] Results check error: {e}")
-            
-            sb.sleep(1.5)
+                print(f"[Scrape] Challenge handling error: {e}")
         
         try:
             # Use shorter dwell time for scraping (1-3s) vs login (3-8s)
