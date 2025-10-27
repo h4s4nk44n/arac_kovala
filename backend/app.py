@@ -1626,102 +1626,102 @@ def login_with_proxy_and_save_cookies_with_retry(target_url: str, max_retries: i
 
 def login_with_proxy_and_save_cookies(target_url: str) -> bool:
     """
-    Open a fresh browser WITH proxy, perform login, save cookies to SESSION_COOKIE_FILE,
-    close the browser, and return whether login succeeded.
+    Open a fresh browser WITH proxy, perform login, save cookies to SESSION_COOKIE_FILE.
     
-    CAPTCHA SOLVING STRATEGY (3-tier approach):
+    COMPREHENSIVE CAPTCHA STRATEGY:
+    1. PRE-LOGIN: Cloudflare Turnstile challenge page (before login form)
+       - Detect via window.turnstile API
+       - Extract sitekey from render() call
+       - Solve with 2Captcha Turnstile API
+       - Retry if challenge reappears
     
-    1. PRE-LOGIN PAGE CAPTCHA (Cloudflare before login form loads):
-       - Detects Cloudflare Turnstile with sitekey (including shadow-root/iframe)
-       - Extracts sitekey from div[data-sitekey], shadow DOM, or iframe src
-       - Solves using 2Captcha API (preferred for Turnstile with sitekey)
-       - Falls back to UC Mode (uc_gui_handle_captcha) for Managed Challenge
-       - Handles multi-attempt retry with page refresh
+    2. LOGIN FORM: Hidden single-click captcha button (after entering credentials)
+       - Appears dynamically after typing username/password
+       - Visible in screenshots but not in HTML
+       - Click with uc_gui_click_captcha() stealth mode
     
-    2. LOGIN FORM CAPTCHA (on the form before submit):
-       - Simple click CAPTCHA (checkbox style): Uses uc_gui_click_captcha()
-       - reCAPTCHA: Solves with 2Captcha API
-       - Cloudflare Turnstile on form: Solves with 2Captcha API
-    
-    3. POST-LOGIN CAPTCHA (after form submission):
-       - Handled in existing post-login logic
-       - Uses same strategies as above
-    
-    This ensures all CAPTCHA types are covered at every stage of the login flow.
+    3. POST-LOGIN: Any remaining challenges
+       - Handle with same strategies
     """
     SAHIBINDEN_USER = os.getenv("SAHIBINDEN_USER", "")
     SAHIBINDEN_PASS = os.getenv("SAHIBINDEN_PASS", "")
-    # Use session rotation to get a fresh IP for each login attempt
     proxy_string = _get_selenium_proxy_string(rotate_session=True)
+    
     if not proxy_string:
-        print("ERROR: IPRoyal (IPROYAL_*) or Bright Data (BRD_*) proxy env vars not set. Cannot perform proxy-backed login.")
+        print("❌ ERROR: Proxy env vars not set (IPROYAL_PROXY, IPROYAL_PROXY_AUTH)")
         return False
-
     if not SAHIBINDEN_USER or not SAHIBINDEN_PASS:
-        print("ERROR: SAHIBINDEN_USER/SAHIBINDEN_PASS not set. Cannot login.")
+        print("❌ ERROR: SAHIBINDEN_USER/SAHIBINDEN_PASS not set")
         return False
     
-    # Debug: Show proxy configuration (mask password)
-    print(f"[Proxy] Proxy string format: {proxy_string[:30]}...@{proxy_string.split('@')[-1] if '@' in proxy_string else 'invalid'}")
-
-    def _accept_cookie_banner_if_any_local(sb):
-        try:
-            if sb.is_element_present("#onetrust-accept-btn-handler"):
-                sb.js_click("#onetrust-accept-btn-handler")
-                time.sleep(0.5)
-        except Exception:
-            pass
+    print(f"[Proxy] Using: {proxy_string.split('@')[-1] if '@' in proxy_string else proxy_string}")
 
     try:
-        print(f"[Login] Starting proxy login session (uc=True, headless={_is_headless()})")
-        print(f"[Proxy] Using proxy: {proxy_string}")
+        print(f"[Login] Starting proxy login session (uc=True, incognito=True, headless={_is_headless()})")
         
-        # SeleniumBase accepts proxy in format: username:password@host:port
-        # CRITICAL: Use incognito + uc mode for maximum anti-detection (per SeleniumBase docs)
-        # "Sometimes you need to add incognito=True with uc=True to maximize your anti-detection abilities"
+        # CRITICAL STEALTH FEATURES:
+        # - uc=True: Undetected ChromeDriver mode
+        # - incognito=True: Prevents cache/history detection  
+        # - proxy: Built-in SeleniumBase proxy support (username:password@host:port)
+        # - Realistic UA, locale, window size
+        # - Custom Chrome flags for anti-detection
+        
         with SB(
-            uc=True,  # Use undetected mode for login
-            incognito=True,  # CRITICAL: Incognito mode prevents browser cache/history detection
+            uc=True,
+            incognito=True,
             headless=_is_headless(),
             xvfb=True,
             agent=_realistic_user_agent(),
             locale_code="tr-TR",
             window_size="1920,1080",
-            user_data_dir=None,  # CRITICAL: Don't use profile in incognito mode
-            proxy=proxy_string,  # CRITICAL: Use SeleniumBase's built-in proxy support
+            user_data_dir=None,  # Don't use profile in incognito
+            proxy=proxy_string,
             chromium_arg=",".join(_get_chrome_args()),
         ) as sb:
-            print(f"[Proxy] ✓ Browser started with proxy extension")
+            print(f"[Proxy] ✓ Browser started with proxy")
             
-            try:
-                sb.driver.execute_cdp_cmd(
-                    "Page.addScriptToEvaluateOnNewDocument",
-                    {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
-                )
-            except Exception:
-                pass
+            # Apply stealth enhancements
             try:
                 _apply_stealth(sb)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Stealth] Warning: {e}")
+            
+            # Human-like initialization
             try:
-                # Small pause and some human-like signals at session start
                 sb.sleep(0.8 + random.random() * 0.8)
-                _humanize_session(sb, 8)
+                _humanize_session(sb, moves=8, dwell_time_sec=2.0)
             except Exception:
                 pass
             
-            # Verify proxy IP (optional diagnostic)
+            # Verify proxy IP
             try:
-                print("[Proxy] Checking IP address...")
+                print("[Proxy] Verifying IP...")
                 sb.get("https://api.ipify.org?format=json")
                 sb.sleep(1)
-                ip_info = sb.get_page_source()
-                print(f"[Proxy] Current IP: {ip_info}")
+                ip_response = sb.get_page_source()
+                print(f"[Proxy] IP response: {ip_response[:100]}")
             except Exception as e:
-                print(f"[Proxy] IP check failed: {e}")
+                print(f"[Proxy] IP check error: {e}")
 
-            # Load login page
+            # Use streamlined stealth login
+            from stealth_login import stealth_login_with_proxy
+            
+            print("[Login] Starting stealth login flow...")
+            login_success = stealth_login_with_proxy(
+                sb=sb,
+                proxy_string=proxy_string,
+                username=SAHIBINDEN_USER,
+                password=SAHIBINDEN_PASS,
+                login_url="https://www.sahibinden.com/giris"
+            )
+            
+            if not login_success:
+                print("[Login] ❌ Stealth login failed")
+                return False
+            
+            # OLD COMPLEX LOGIN CODE BELOW - keeping as fallback
+            # TODO: Remove after testing streamlined version
+            """
             login_urls = [
                 "https://www.sahibinden.com/giris",
             ]
@@ -3222,36 +3222,42 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
             except Exception as e:
                 print(f"[Login] Error checking for 2FA: {e}")
 
-            # Navigate to target and save cookies
+            """  # End of old commented-out login code
+            
+            # Login succeeded, navigate to target and save cookies
+            print(f"[Login] Navigating to target URL: {target_url}")
             try:
                 sb.get(target_url)
-                sb.sleep(1.5 + random.random() * 1.5)
-            except Exception:
-                pass
-            try:
-                _bypass_turnstile_if_present(sb, 20)
-            except Exception:
-                pass
-            try:
-                _try_uc_gui_click_captcha(sb, 45)
-            except Exception:
-                pass
-            try:
-                _solve_cloudflare_checkbox(sb, 60)
-            except Exception:
-                pass
-            try:
-                _humanize_session(sb, 6)
-            except Exception:
-                pass
-            _accept_cookie_banner_if_any_local(sb)
-            try:
-                with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
-                    json.dump(sb.get_cookies(), f)
-                print(f"Saved session cookies to {SESSION_COOKIE_FILE} (via proxy login)")
+                sb.sleep(2)
             except Exception as e:
-                print("Saving cookies failed:", e)
+                print(f"[Login] Target navigation error: {e}")
+            
+            # Human-like behavior
+            try:
+                _humanize_session(sb, moves=6, dwell_time_sec=2.0)
+            except Exception:
+                pass
+            
+            # Accept cookie banner
+            try:
+                if sb.is_element_present("#onetrust-accept-btn-handler"):
+                    sb.js_click("#onetrust-accept-btn-handler")
+                    sb.sleep(0.5)
+            except Exception:
+                pass
+            
+            # Save cookies
+            print(f"[Login] Saving cookies to {SESSION_COOKIE_FILE}")
+            try:
+                cookies = sb.get_cookies()
+                with open(SESSION_COOKIE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(cookies, f, indent=2)
+                print(f"[Login] ✓ Saved {len(cookies)} cookies")
+            except Exception as e:
+                print(f"[Login] ❌ Cookie save failed: {e}")
                 return False
+            
+            print("[Login] ✓ Login process complete!")
             return True
     except Exception as e:
         print("Proxy login session failed:", e)
