@@ -1763,9 +1763,22 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     except Exception as e:
                         print(f"[Login] CDP interceptor failed: {e}")
                     
-                    # Now load the page with interceptor already in place
-                    print(f"Loading login page: {login_url}")
-                    sb.uc_open_with_reconnect(login_url, reconnect_time=5)
+                    # CRITICAL: Use CDP Mode for maximum stealth instead of uc_open_with_reconnect
+                    # CDP Mode is significantly harder to detect than standard UC Mode
+                    print(f"[Login] Activating CDP Mode for stealth navigation...")
+                    try:
+                        # Activate CDP mode - this is the most stealthy method
+                        sb.activate_cdp_mode()
+                        print("[Login] ✓ CDP Mode activated")
+                        
+                        # Navigate to login page using CDP
+                        print(f"[Login] Loading login page via CDP: {login_url}")
+                        sb.cdp.open(login_url)
+                        
+                    except Exception as e:
+                        print(f"[Login] CDP Mode activation failed, falling back to UC Mode: {e}")
+                        # Fallback to UC Mode if CDP fails
+                        sb.uc_open_with_reconnect(login_url, reconnect_time=5)
                     
                     # Wait for Cloudflare challenge widget to render (if present)
                     print("[Login] Waiting for page to settle and Turnstile to render...")
@@ -1775,12 +1788,16 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     try:
                         ts_before = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                         shot_before = os.path.join(SCREENSHOTS_DIR, f"login_before_detection_{ts_before}.png")
-                        sb.save_screenshot(shot_before)
+                        # Use CDP mode for screenshot if available (more stealthy)
+                        try:
+                            sb.cdp.save_screenshot(shot_before)
+                        except:
+                            sb.save_screenshot(shot_before)
                         print(f"[Login] Screenshot before detection: {shot_before}")
                     except Exception as e:
                         print(f"[Login] Screenshot error: {e}")
                     
-                    # Debug: Check what's actually on the page
+                    # Debug: Check what's actually on the page (use CDP mode if available)
                     print("[Login] Debugging page content...")
                     try:
                         page_info = sb.execute_script("""
@@ -1803,9 +1820,16 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     except Exception as e:
                         print(f"[Login] Page info error: {e}")
                     
-                    # Check if login form is already visible (no challenge)
+                    # Check if login form is already visible (no challenge) - use CDP mode if available
                     try:
-                        if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                        # Try CDP mode first (more stealthy)
+                        try:
+                            form_present = sb.cdp.is_element_present("#username") and sb.cdp.is_element_present("#password")
+                        except:
+                            # Fallback to standard mode
+                            form_present = sb.is_element_present("#username") and sb.is_element_present("#password")
+                        
+                        if form_present:
                             print("[Login] ✓ Login form already visible (no challenge required)")
                             loaded = True
                             break
@@ -2080,6 +2104,22 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                             for idx, script in enumerate(cf_scripts[:5]):  # Show first 5
                                 print(f"[Challenge]   Script {idx+1}: {script.get('src', 'N/A')}")
                             
+                            # EXTRACT SITEKEY FROM TURNSTILE SCRIPT URL (fallback method)
+                            if not challenge_info.get('turnstileSitekey'):
+                                print("[Challenge] Attempting to extract sitekey from Turnstile script URL...")
+                                for script in cf_scripts:
+                                    script_src = script.get('src', '')
+                                    if 'turnstile' in script_src:
+                                        # Pattern: https://challenges.cloudflare.com/turnstile/v0/b/SITEKEY/api.js
+                                        import re
+                                        match = re.search(r'/turnstile/v\d+/b/([a-zA-Z0-9_-]+)/', script_src)
+                                        if match:
+                                            extracted_sitekey = match.group(1)
+                                            print(f"[Challenge] ✓ Extracted sitekey from script URL: {extracted_sitekey}")
+                                            challenge_info['turnstileSitekey'] = extracted_sitekey
+                                            challenge_info['parametersSource'] = 'script-url'
+                                            break
+                            
                             # Show iframes
                             if challenge_structure.get('iframes'):
                                 print("[Challenge] Iframes:")
@@ -2107,11 +2147,15 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                             import traceback
                             traceback.print_exc()
                         
-                        # STRATEGY 1: Cloudflare Turnstile with sitekey - use 2Captcha API
-                        if challenge_info.get('turnstileSitekey'):
+                        # STRATEGY 1: Cloudflare Turnstile (with sitekey from ANY source) - ALWAYS use 2Captcha API
+                        # Check if we have Turnstile script OR sitekey from any detection method
+                        has_turnstile = challenge_info.get('hasTurnstileScript') or challenge_info.get('turnstileSitekey')
+                        
+                        if has_turnstile and challenge_info.get('turnstileSitekey'):
                             print("[Login] ✓ Detected Cloudflare Turnstile with sitekey!")
                             print(f"[Login] Sitekey: {challenge_info.get('turnstileSitekey')}")
-                            print("[Login] Using 2Captcha API to solve...")
+                            print(f"[Login] Source: {challenge_info.get('parametersSource', 'unknown')}")
+                            print("[Login] Using 2Captcha API (NOT UC Mode) to solve Turnstile...")
                             
                             # Get proxy string for 2Captcha (must match browser IP)
                             captcha_proxy_string = proxy_string if proxy_string else None
@@ -2121,23 +2165,42 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 print("[Login] ✓ 2Captcha solved Cloudflare Turnstile!")
                                 
                                 # Wait for page to update after solution injection
-                                print("[Login] Waiting for page to process solution...")
+                                print("[Login] Waiting for page to process Turnstile solution...")
                                 sb.sleep(8)
                                 
                                 # Check if login form appeared
-                                if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                # Use CDP mode for stealth element detection
+                                try:
+                                    form_visible = sb.cdp.is_element_present("#username") and sb.cdp.is_element_present("#password")
+                                except:
+                                    try:
+                                        form_visible = sb.is_element_present("#username") and sb.is_element_present("#password")
+                                    except Exception:
+                                        form_visible = False
+                                
+                                if form_visible:
                                     print("[Login] ✓ Login form appeared after 2Captcha!")
                                     loaded = True
                                     break
                                 else:
                                     print("[Login] Form not visible yet, waiting longer...")
                                     sb.sleep(5)
-                                    if sb.is_element_present("#username") and sb.is_element_present("#password"):
+                                    # Check again with CDP mode
+                                    try:
+                                        form_visible = sb.cdp.is_element_present("#username") and sb.cdp.is_element_present("#password")
+                                    except:
+                                        form_visible = sb.is_element_present("#username") and sb.is_element_present("#password")
+                                    
+                                    if form_visible:
                                         print("[Login] ✓ Login form appeared after extended wait!")
                                         loaded = True
                                         break
                             else:
                                 print("[Login] ⚠ 2Captcha failed to solve Turnstile")
+                                print("[Login] This may indicate:")
+                                print("[Login]   - Sitekey is invalid or expired")
+                                print("[Login]   - 2Captcha service issue")
+                                print("[Login]   - Proxy IP is blocked")
                                 print("[Login] Trying UC Mode as fallback...")
                                 try:
                                     sb.uc_gui_handle_captcha()
@@ -2149,7 +2212,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                                 except Exception as e:
                                     print(f"[Login] UC Mode fallback error: {e}")
                         
-                        # STRATEGY 2: Cloudflare Managed Challenge - use UC Mode
+                        # STRATEGY 2: Cloudflare Managed Challenge WITHOUT sitekey - use UC Mode ONLY
                         elif challenge_info.get('hasManagedChallenge') or challenge_info.get('hasCheckingText'):
                             print("[Login] ✓ Detected Cloudflare Managed Challenge")
                             print("[Login] This challenge requires SeleniumBase UC Mode (2Captcha not supported)")
