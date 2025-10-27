@@ -930,14 +930,16 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
         # Method 1: Extract from Turnstile API script tag (most reliable for JS challenges)
         try:
             script_js = """
-                // Look for Turnstile API script
-                let scripts = document.querySelectorAll('script[src*="challenges.cloudflare.com/turnstile"]');
-                if (scripts.length > 0) {
-                    let src = scripts[0].getAttribute('src');
-                    // URL format: https://challenges.cloudflare.com/turnstile/v0/b/SITEKEY/api.js
-                    return src;
-                }
-                return null;
+                (() => {
+                    // Look for Turnstile API script
+                    let scripts = document.querySelectorAll('script[src*="challenges.cloudflare.com/turnstile"]');
+                    if (scripts.length > 0) {
+                        let src = scripts[0].getAttribute('src');
+                        // URL format: https://challenges.cloudflare.com/turnstile/v0/b/SITEKEY/api.js
+                        return src;
+                    }
+                    return null;
+                })();
             """
             script_src = sb.execute_script(script_js)
             if script_src:
@@ -955,26 +957,28 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
         if not sitekey:
             try:
                 sitekey_js = """
-                    // Look for div with data-sitekey attribute
-                    let divs = document.querySelectorAll('div[data-sitekey]');
-                    if (divs.length > 0) {
-                        return divs[0].getAttribute('data-sitekey');
-                    }
-                    
-                    // Look for cf-turnstile class
-                    divs = document.querySelectorAll('.cf-turnstile');
-                    if (divs.length > 0) {
-                        return divs[0].getAttribute('data-sitekey');
-                    }
-                    
-                    // Look in all divs with class containing 'turnstile'
-                    divs = document.querySelectorAll('div[class*="turnstile"]');
-                    for (let div of divs) {
-                        let sk = div.getAttribute('data-sitekey');
-                        if (sk) return sk;
-                    }
-                    
-                    return null;
+                    (() => {
+                        // Look for div with data-sitekey attribute
+                        let divs = document.querySelectorAll('div[data-sitekey]');
+                        if (divs.length > 0) {
+                            return divs[0].getAttribute('data-sitekey');
+                        }
+                        
+                        // Look for cf-turnstile class
+                        divs = document.querySelectorAll('.cf-turnstile');
+                        if (divs.length > 0) {
+                            return divs[0].getAttribute('data-sitekey');
+                        }
+                        
+                        // Look in all divs with class containing 'turnstile'
+                        divs = document.querySelectorAll('div[class*="turnstile"]');
+                        for (let div of divs) {
+                            let sk = div.getAttribute('data-sitekey');
+                            if (sk) return sk;
+                        }
+                        
+                        return null;
+                    })();
                 """
                 sitekey = sb.execute_script(sitekey_js)
                 if sitekey:
@@ -986,11 +990,13 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
         if not sitekey:
             try:
                 iframe_js = """
-                    let iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]');
-                    if (iframes.length > 0) {
-                        return iframes[0].getAttribute('src');
-                    }
-                    return null;
+                    (() => {
+                        let iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]');
+                        if (iframes.length > 0) {
+                            return iframes[0].getAttribute('src');
+                        }
+                        return null;
+                    })();
                 """
                 iframe_src = sb.execute_script(iframe_js)
                 if iframe_src:
@@ -1081,62 +1087,63 @@ def _solve_cloudflare_turnstile_with_2captcha(sb, max_wait_seconds: int = 120, p
         print("[2Captcha-Turnstile] Injecting solution into page...")
         
         inject_js = """
-            const token = arguments[0];
-            console.log('[2Captcha] Injecting token, length:', token.length);
-            
-            let injected = false;
-            let method = 'none';
-            
-            // Primary method: Find cf-turnstile-response (as per 2Captcha docs)
-            let responseInputs = document.querySelectorAll('input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"]');
-            console.log('[2Captcha] Found', responseInputs.length, 'cf-turnstile-response elements');
-            
-            if (responseInputs.length > 0) {
-                responseInputs.forEach((input, idx) => {
-                    input.value = token;
-                    // Trigger change event
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                    console.log('[2Captcha] Injected into cf-turnstile-response', idx);
-                    injected = true;
-                    method = 'cf-turnstile-response';
-                });
-            }
-            
-            // Fallback: Look for any turnstile-related inputs
-            if (!injected) {
-                let hiddenInputs = document.querySelectorAll('input[name*="turnstile"], textarea[name*="turnstile"]');
-                console.log('[2Captcha] Found', hiddenInputs.length, 'turnstile-related inputs');
+            (function(token) {
+                console.log('[2Captcha] Injecting token, length:', token.length);
                 
-                if (hiddenInputs.length > 0) {
-                    hiddenInputs.forEach((input, idx) => {
+                let injected = false;
+                let method = 'none';
+                
+                // Primary method: Find cf-turnstile-response (as per 2Captcha docs)
+                let responseInputs = document.querySelectorAll('input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"]');
+                console.log('[2Captcha] Found', responseInputs.length, 'cf-turnstile-response elements');
+                
+                if (responseInputs.length > 0) {
+                    responseInputs.forEach((input, idx) => {
                         input.value = token;
+                        // Trigger change event
                         input.dispatchEvent(new Event('change', { bubbles: true }));
-                        console.log('[2Captcha] Injected into turnstile input', idx);
+                        console.log('[2Captcha] Injected into cf-turnstile-response', idx);
                         injected = true;
-                        method = 'turnstile-input';
+                        method = 'cf-turnstile-response';
                     });
                 }
-            }
-            
-            // Try to find and trigger Turnstile callback
-            if (typeof window.turnstile !== 'undefined') {
-                console.log('[2Captcha] window.turnstile object exists');
-                try {
-                    // Some sites have a callback function
-                    if (window.turnstile.callback) {
-                        window.turnstile.callback(token);
-                        console.log('[2Captcha] Called window.turnstile.callback()');
+                
+                // Fallback: Look for any turnstile-related inputs
+                if (!injected) {
+                    let hiddenInputs = document.querySelectorAll('input[name*="turnstile"], textarea[name*="turnstile"]');
+                    console.log('[2Captcha] Found', hiddenInputs.length, 'turnstile-related inputs');
+                    
+                    if (hiddenInputs.length > 0) {
+                        hiddenInputs.forEach((input, idx) => {
+                            input.value = token;
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                            console.log('[2Captcha] Injected into turnstile input', idx);
+                            injected = true;
+                            method = 'turnstile-input';
+                        });
                     }
-                } catch (e) {
-                    console.log('[2Captcha] Turnstile callback error:', e.message);
                 }
-            }
-            
-            return {
-                success: injected, 
-                method: method,
-                inputsFound: responseInputs.length
-            };
+                
+                // Try to find and trigger Turnstile callback
+                if (typeof window.turnstile !== 'undefined') {
+                    console.log('[2Captcha] window.turnstile object exists');
+                    try {
+                        // Some sites have a callback function
+                        if (window.turnstile.callback) {
+                            window.turnstile.callback(token);
+                            console.log('[2Captcha] Called window.turnstile.callback()');
+                        }
+                    } catch (e) {
+                        console.log('[2Captcha] Turnstile callback error:', e.message);
+                    }
+                }
+                
+                return {
+                    success: injected, 
+                    method: method,
+                    inputsFound: responseInputs.length
+                };
+            })(arguments[0]);
         """
         
         try:
@@ -1312,114 +1319,115 @@ def _solve_recaptcha_with_2captcha(sb, max_wait_seconds: int = 180, auto_submit:
         
         # CRITICAL FIX: For invisible/enterprise reCAPTCHA (modal iframe), we need to override grecaptcha API
         inject_js = """
-            const token = arguments[0];
-            console.log('[2Captcha-Inject] Starting injection for invisible reCAPTCHA');
-            console.log('[2Captcha-Inject] Token length:', token.length);
-            
-            let injected = false;
-            let method = 'none';
-            
-            // METHOD 1: Override grecaptcha.enterprise (priority)
-            if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
-                console.log('[2Captcha-Inject] Found grecaptcha.enterprise');
-                try {
-                    grecaptcha.enterprise.getResponse = function() { return token; };
-                    method = 'enterprise_override';
-                    injected = true;
-                    console.log('[2Captcha-Inject] ✓ Overrode grecaptcha.enterprise.getResponse');
-                } catch (e) {
-                    console.error('[2Captcha-Inject] Enterprise override failed:', e);
+            (function(token) {
+                console.log('[2Captcha-Inject] Starting injection for invisible reCAPTCHA');
+                console.log('[2Captcha-Inject] Token length:', token.length);
+                
+                let injected = false;
+                let method = 'none';
+                
+                // METHOD 1: Override grecaptcha.enterprise (priority)
+                if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
+                    console.log('[2Captcha-Inject] Found grecaptcha.enterprise');
+                    try {
+                        grecaptcha.enterprise.getResponse = function() { return token; };
+                        method = 'enterprise_override';
+                        injected = true;
+                        console.log('[2Captcha-Inject] ✓ Overrode grecaptcha.enterprise.getResponse');
+                    } catch (e) {
+                        console.error('[2Captcha-Inject] Enterprise override failed:', e);
+                    }
                 }
-            }
-            
-            // METHOD 2: Override standard grecaptcha.getResponse
-            if (typeof grecaptcha !== 'undefined') {
-                console.log('[2Captcha-Inject] Found grecaptcha');
-                try {
-                    const originalGetResponse = grecaptcha.getResponse;
-                    grecaptcha.getResponse = function(widgetId) {
-                        console.log('[2Captcha-Inject] getResponse called, returning token');
-                        return token;
-                    };
+                
+                // METHOD 2: Override standard grecaptcha.getResponse
+                if (typeof grecaptcha !== 'undefined') {
+                    console.log('[2Captcha-Inject] Found grecaptcha');
+                    try {
+                        const originalGetResponse = grecaptcha.getResponse;
+                        grecaptcha.getResponse = function(widgetId) {
+                            console.log('[2Captcha-Inject] getResponse called, returning token');
+                            return token;
+                        };
+                        if (!injected) {
+                            method = 'grecaptcha_override';
+                            injected = true;
+                        }
+                        console.log('[2Captcha-Inject] ✓ Overrode grecaptcha.getResponse');
+                    } catch (e) {
+                        console.error('[2Captcha-Inject] grecaptcha override failed:', e);
+                    }
+                }
+                
+                // METHOD 3: Manipulate ___grecaptcha_cfg to inject token and execute callbacks
+                if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
+                    console.log('[2Captcha-Inject] Found ___grecaptcha_cfg with', Object.keys(___grecaptcha_cfg.clients).length, 'clients');
+                    
+                    for (const clientId in ___grecaptcha_cfg.clients) {
+                        const client = ___grecaptcha_cfg.clients[clientId];
+                        console.log('[2Captcha-Inject] Processing client:', clientId);
+                        
+                        // Deep search for response fields and callbacks
+                        const processObject = (obj, depth = 0, path = '') => {
+                            if (depth > 8 || !obj || typeof obj !== 'object') return;
+                            
+                            for (const key in obj) {
+                                const fullPath = path ? path + '.' + key : key;
+                                
+                                // Inject into response fields
+                                if (key === 'response' || key === 'g-recaptcha-response') {
+                                    console.log('[2Captcha-Inject] Setting response at:', fullPath);
+                                    obj[key] = token;
+                                    injected = true;
+                                    method = 'cfg_injection';
+                                }
+                                
+                                // Execute callbacks
+                                if (key === 'callback' && typeof obj[key] === 'function') {
+                                    console.log('[2Captcha-Inject] Executing callback at:', fullPath);
+                                    try {
+                                        obj[key](token);
+                                        method = 'callback_executed';
+                                        console.log('[2Captcha-Inject] ✓ Callback executed successfully');
+                                    } catch (e) {
+                                        console.error('[2Captcha-Inject] Callback execution failed:', e);
+                                    }
+                                }
+                                
+                                // Recurse
+                                processObject(obj[key], depth + 1, fullPath);
+                            }
+                        };
+                        
+                        processObject(client);
+                    }
+                }
+                
+                // METHOD 4: Find and populate textareas (fallback for visible reCAPTCHA)
+                const textareas = document.querySelectorAll('textarea[name="g-recaptcha-response"], textarea#g-recaptcha-response');
+                if (textareas.length > 0) {
+                    console.log('[2Captcha-Inject] Found', textareas.length, 'textarea(s)');
+                    textareas.forEach((ta, idx) => {
+                        ta.style.display = 'block';
+                        ta.value = token;
+                        ta.innerHTML = token;
+                        ta.dispatchEvent(new Event('input', { bubbles: true }));
+                        ta.dispatchEvent(new Event('change', { bubbles: true }));
+                        console.log('[2Captcha-Inject] ✓ Textarea', idx, 'updated');
+                    });
                     if (!injected) {
-                        method = 'grecaptcha_override';
+                        method = 'textarea_fallback';
                         injected = true;
                     }
-                    console.log('[2Captcha-Inject] ✓ Overrode grecaptcha.getResponse');
-                } catch (e) {
-                    console.error('[2Captcha-Inject] grecaptcha override failed:', e);
+                } else {
+                    console.log('[2Captcha-Inject] No textareas found (expected for invisible reCAPTCHA)');
                 }
-            }
-            
-            // METHOD 3: Manipulate ___grecaptcha_cfg to inject token and execute callbacks
-            if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
-                console.log('[2Captcha-Inject] Found ___grecaptcha_cfg with', Object.keys(___grecaptcha_cfg.clients).length, 'clients');
                 
-                for (const clientId in ___grecaptcha_cfg.clients) {
-                    const client = ___grecaptcha_cfg.clients[clientId];
-                    console.log('[2Captcha-Inject] Processing client:', clientId);
-                    
-                    // Deep search for response fields and callbacks
-                    const processObject = (obj, depth = 0, path = '') => {
-                        if (depth > 8 || !obj || typeof obj !== 'object') return;
-                        
-                        for (const key in obj) {
-                            const fullPath = path ? path + '.' + key : key;
-                            
-                            // Inject into response fields
-                            if (key === 'response' || key === 'g-recaptcha-response') {
-                                console.log('[2Captcha-Inject] Setting response at:', fullPath);
-                                obj[key] = token;
-                                injected = true;
-                                method = 'cfg_injection';
-                            }
-                            
-                            // Execute callbacks
-                            if (key === 'callback' && typeof obj[key] === 'function') {
-                                console.log('[2Captcha-Inject] Executing callback at:', fullPath);
-                                try {
-                                    obj[key](token);
-                                    method = 'callback_executed';
-                                    console.log('[2Captcha-Inject] ✓ Callback executed successfully');
-                                } catch (e) {
-                                    console.error('[2Captcha-Inject] Callback execution failed:', e);
-                                }
-                            }
-                            
-                            // Recurse
-                            processObject(obj[key], depth + 1, fullPath);
-                        }
-                    };
-                    
-                    processObject(client);
-                }
-            }
-            
-            // METHOD 4: Find and populate textareas (fallback for visible reCAPTCHA)
-            const textareas = document.querySelectorAll('textarea[name="g-recaptcha-response"], textarea#g-recaptcha-response');
-            if (textareas.length > 0) {
-                console.log('[2Captcha-Inject] Found', textareas.length, 'textarea(s)');
-                textareas.forEach((ta, idx) => {
-                    ta.style.display = 'block';
-                    ta.value = token;
-                    ta.innerHTML = token;
-                    ta.dispatchEvent(new Event('input', { bubbles: true }));
-                    ta.dispatchEvent(new Event('change', { bubbles: true }));
-                    console.log('[2Captcha-Inject] ✓ Textarea', idx, 'updated');
-                });
-                if (!injected) {
-                    method = 'textarea_fallback';
-                    injected = true;
-                }
-            } else {
-                console.log('[2Captcha-Inject] No textareas found (expected for invisible reCAPTCHA)');
-            }
-            
-            return { 
-                success: injected, 
-                method: method,
-                warning: method === 'callback_executed' ? null : 'no_callback_executed'
-            };
+                return { 
+                    success: injected, 
+                    method: method,
+                    warning: method === 'callback_executed' ? null : 'no_callback_executed'
+                };
+            })(arguments[0]);
         """
         
         try:
@@ -1801,18 +1809,20 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     print("[Login] Debugging page content...")
                     try:
                         page_info = sb.execute_script("""
-                            return {
-                                title: document.title,
-                                url: window.location.href,
-                                hasCloudflareChallengeDiv: document.querySelector('.cf-turnstile') !== null,
-                                hasCloudflareChallengeIframe: document.querySelector('iframe[src*="challenges.cloudflare.com"]') !== null,
-                                hasUsernameField: document.querySelector('#username') !== null,
-                                hasPasswordField: document.querySelector('#password') !== null,
-                                bodyTextStart: document.body.innerText.substring(0, 200),
-                                turnstileDivs: document.querySelectorAll('div[data-sitekey]').length,
-                                allIframes: document.querySelectorAll('iframe').length,
-                                cfTurnstileDivs: document.querySelectorAll('.cf-turnstile').length
-                            };
+                            (() => {
+                                return {
+                                    title: document.title,
+                                    url: window.location.href,
+                                    hasCloudflareChallengeDiv: document.querySelector('.cf-turnstile') !== null,
+                                    hasCloudflareChallengeIframe: document.querySelector('iframe[src*="challenges.cloudflare.com"]') !== null,
+                                    hasUsernameField: document.querySelector('#username') !== null,
+                                    hasPasswordField: document.querySelector('#password') !== null,
+                                    bodyTextStart: document.body.innerText.substring(0, 200),
+                                    turnstileDivs: document.querySelectorAll('div[data-sitekey]').length,
+                                    allIframes: document.querySelectorAll('iframe').length,
+                                    cfTurnstileDivs: document.querySelectorAll('.cf-turnstile').length
+                                };
+                            })();
                         """)
                         print(f"[Login] Page debug info:")
                         for key, value in page_info.items():
@@ -1894,105 +1904,106 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     challenge_type = None
                     try:
                         # Collect comprehensive challenge information including shadow-root detection
+                        # Wrap in IIFE for CDP Mode compatibility (no top-level return statements)
                         challenge_info = sb.execute_script("""
-                            // Helper: Search for Turnstile sitekey in shadow DOM
-                            function findTurnstileSitekeyInShadow(root) {
-                                // Check direct element
-                                const directDiv = root.querySelector('div[data-sitekey]');
-                                if (directDiv) {
-                                    return directDiv.getAttribute('data-sitekey');
-                                }
-                                
-                                // Search shadow roots recursively
-                                const allElements = root.querySelectorAll('*');
-                                for (const el of allElements) {
-                                    if (el.shadowRoot) {
-                                        const result = findTurnstileSitekeyInShadow(el.shadowRoot);
-                                        if (result) return result;
+                            (() => {
+                                // Helper: Search for Turnstile sitekey in shadow DOM
+                                function findTurnstileSitekeyInShadow(root) {
+                                    // Check direct element
+                                    const directDiv = root.querySelector('div[data-sitekey]');
+                                    if (directDiv) {
+                                        return directDiv.getAttribute('data-sitekey');
                                     }
-                                }
-                                return null;
-                            }
-                            
-                            // Helper: Extract sitekey from iframe
-                            function extractSitekeyFromIframe(iframe) {
-                                try {
-                                    const src = iframe.src || '';
-                                    // Turnstile iframe format: https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/.../?sitekey=XXXXX
-                                    const match = src.match(/[?&]sitekey=([^&]+)/);
-                                    return match ? match[1] : null;
-                                } catch (e) {
+                                    
+                                    // Search shadow roots recursively
+                                    const allElements = root.querySelectorAll('*');
+                                    for (const el of allElements) {
+                                        if (el.shadowRoot) {
+                                            const result = findTurnstileSitekeyInShadow(el.shadowRoot);
+                                            if (result) return result;
+                                        }
+                                    }
                                     return null;
                                 }
-                            }
-                            
-                            // 1. Check intercepted parameters from turnstile.render()
-                            let sitekey = null;
-                            let action = null;
-                            let cData = null;
-                            
-                            if (window._turnstileParams) {
-                                console.log('[Detection] Found intercepted Turnstile params:', window._turnstileParams);
-                                sitekey = window._turnstileParams.sitekey || window._turnstileParams['sitekey'];
-                                action = window._turnstileParams.action || window._turnstileParams['action'];
-                                cData = window._turnstileParams.cData || window._turnstileParams['cData'] || window._turnstileParams.data;
-                            }
-                            
-                            // 2. Check for standard Turnstile div with data-sitekey
-                            if (!sitekey) {
-                                const turnstileDiv = document.querySelector('div[data-sitekey]');
-                                if (turnstileDiv) {
-                                    sitekey = turnstileDiv.getAttribute('data-sitekey');
-                                    action = turnstileDiv.getAttribute('data-action');
-                                    cData = turnstileDiv.getAttribute('data-cdata');
-                                }
-                            }
-                            
-                            // 3. Check in shadow roots
-                            if (!sitekey) {
-                                sitekey = findTurnstileSitekeyInShadow(document);
-                            }
-                            
-                            // 4. Extract from Turnstile iframe src
-                            if (!sitekey) {
-                                const turnstileIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
-                                if (turnstileIframe) {
-                                    sitekey = extractSitekeyFromIframe(turnstileIframe);
-                                }
-                            }
-                            
-                            // 5. Extract from any iframe with challenge platform URL
-                            if (!sitekey) {
-                                const allIframes = document.querySelectorAll('iframe');
-                                for (const iframe of allIframes) {
-                                    const key = extractSitekeyFromIframe(iframe);
-                                    if (key) {
-                                        sitekey = key;
-                                        break;
+                                
+                                // Helper: Extract sitekey from iframe
+                                function extractSitekeyFromIframe(iframe) {
+                                    try {
+                                        const src = iframe.src || '';
+                                        // Turnstile iframe format: https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/.../?sitekey=XXXXX
+                                        const match = src.match(/[?&]sitekey=([^&]+)/);
+                                        return match ? match[1] : null;
+                                    } catch (e) {
+                                        return null;
                                     }
                                 }
-                            }
-                            
-                            return {
-                                hasTurnstileScript: document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]') !== null,
-                                hasTurnstileResponse: document.querySelector('input[name="cf-turnstile-response"]') !== null,
-                                hasManagedChallenge: document.querySelector('script[src*="/cdn-cgi/challenge-platform/"]') !== null,
-                                hasChallengeDiv: document.querySelector('#cf-wrapper') !== null || document.querySelector('[id*="challenge"]') !== null,
-                                pageTitle: document.title,
-                                hasCheckingText: document.body.innerText.includes('Checking') || 
-                                                document.body.innerText.includes('güvenliğini gözden') ||
-                                                document.body.innerText.includes('insan olduğunuzu'),
-                                bodyTextStart: document.body.innerText.substring(0, 300),
-                                turnstileSitekey: sitekey,
-                                turnstileAction: action,
-                                turnstileCData: cData,
-                                hasTurnstileDiv: document.querySelector('div[data-sitekey]') !== null,
-                                turnstileIframeCount: document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]').length,
-                                parametersSource: window._turnstileParams ? 'intercepted' : (sitekey ? 'html' : 'none')
-                            };
-                        """)
-                        
-                        # OVERRIDE with console log parameters if we found them
+                                
+                                // 1. Check intercepted parameters from turnstile.render()
+                                let sitekey = null;
+                                let action = null;
+                                let cData = null;
+                                
+                                if (window._turnstileParams) {
+                                    console.log('[Detection] Found intercepted Turnstile params:', window._turnstileParams);
+                                    sitekey = window._turnstileParams.sitekey || window._turnstileParams['sitekey'];
+                                    action = window._turnstileParams.action || window._turnstileParams['action'];
+                                    cData = window._turnstileParams.cData || window._turnstileParams['cData'] || window._turnstileParams.data;
+                                }
+                                
+                                // 2. Check for standard Turnstile div with data-sitekey
+                                if (!sitekey) {
+                                    const turnstileDiv = document.querySelector('div[data-sitekey]');
+                                    if (turnstileDiv) {
+                                        sitekey = turnstileDiv.getAttribute('data-sitekey');
+                                        action = turnstileDiv.getAttribute('data-action');
+                                        cData = turnstileDiv.getAttribute('data-cdata');
+                                    }
+                                }
+                                
+                                // 3. Check in shadow roots
+                                if (!sitekey) {
+                                    sitekey = findTurnstileSitekeyInShadow(document);
+                                }
+                                
+                                // 4. Extract from Turnstile iframe src
+                                if (!sitekey) {
+                                    const turnstileIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+                                    if (turnstileIframe) {
+                                        sitekey = extractSitekeyFromIframe(turnstileIframe);
+                                    }
+                                }
+                                
+                                // 5. Extract from any iframe with challenge platform URL
+                                if (!sitekey) {
+                                    const allIframes = document.querySelectorAll('iframe');
+                                    for (const iframe of allIframes) {
+                                        const key = extractSitekeyFromIframe(iframe);
+                                        if (key) {
+                                            sitekey = key;
+                                        break;
+                                        }
+                                    }
+                                }
+                                
+                                return {
+                                    hasTurnstileScript: document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]') !== null,
+                                    hasTurnstileResponse: document.querySelector('input[name="cf-turnstile-response"]') !== null,
+                                    hasManagedChallenge: document.querySelector('script[src*="/cdn-cgi/challenge-platform/"]') !== null,
+                                    hasChallengeDiv: document.querySelector('#cf-wrapper') !== null || document.querySelector('[id*="challenge"]') !== null,
+                                    pageTitle: document.title,
+                                    hasCheckingText: document.body.innerText.includes('Checking') || 
+                                                    document.body.innerText.includes('güvenliğini gözden') ||
+                                                    document.body.innerText.includes('insan olduğunuzu'),
+                                    bodyTextStart: document.body.innerText.substring(0, 300),
+                                    turnstileSitekey: sitekey,
+                                    turnstileAction: action,
+                                    turnstileCData: cData,
+                                    hasTurnstileDiv: document.querySelector('div[data-sitekey]') !== null,
+                                    turnstileIframeCount: document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]').length,
+                                    parametersSource: window._turnstileParams ? 'intercepted' : (sitekey ? 'html' : 'none')
+                                };
+                            })();
+                        """)                        # OVERRIDE with console log parameters if we found them
                         if captcha_params_from_logs:
                             print(f"[Login] Overriding challenge_info with console log parameters")
                             challenge_info['turnstileSitekey'] = captcha_params_from_logs.get('sitekey')
@@ -2026,62 +2037,64 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                             
                             # Extract and save detailed challenge structure
                             challenge_structure = sb.execute_script("""
-                                function getElementInfo(el) {
-                                    if (!el) return null;
-                                    return {
-                                        tagName: el.tagName,
-                                        id: el.id,
-                                        className: el.className,
-                                        innerHTML: el.innerHTML.substring(0, 500),
-                                        attributes: Array.from(el.attributes).map(a => ({name: a.name, value: a.value}))
-                                    };
-                                }
-                                
-                                return {
-                                    // All scripts on the page
-                                    scripts: Array.from(document.querySelectorAll('script')).map(s => ({
-                                        src: s.src,
-                                        hasInnerText: s.innerText.length > 0,
-                                        innerTextStart: s.innerText.substring(0, 200)
-                                    })),
-                                    
-                                    // All iframes
-                                    iframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
-                                        src: iframe.src,
-                                        id: iframe.id,
-                                        title: iframe.title,
-                                        name: iframe.name
-                                    })),
-                                    
-                                    // All forms
-                                    forms: Array.from(document.querySelectorAll('form')).map(form => getElementInfo(form)),
-                                    
-                                    // All inputs
-                                    inputs: Array.from(document.querySelectorAll('input')).map(input => ({
-                                        type: input.type,
-                                        name: input.name,
-                                        id: input.id,
-                                        value: input.value ? '***' : '',
-                                        className: input.className
-                                    })),
-                                    
-                                    // Cloudflare-specific elements
-                                    cloudflareElements: {
-                                        cfWrapper: getElementInfo(document.querySelector('#cf-wrapper')),
-                                        cfChallenge: getElementInfo(document.querySelector('[id*="challenge"]')),
-                                        turnstileDiv: getElementInfo(document.querySelector('.cf-turnstile')),
-                                        turnstileResponse: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]')),
-                                        challengeForm: getElementInfo(document.querySelector('#challenge-form'))
-                                    },
-                                    
-                                    // Page metadata
-                                    metadata: {
-                                        title: document.title,
-                                        url: window.location.href,
-                                        bodyClasses: document.body.className,
-                                        bodyId: document.body.id
+                                (() => {
+                                    function getElementInfo(el) {
+                                        if (!el) return null;
+                                        return {
+                                            tagName: el.tagName,
+                                            id: el.id,
+                                            className: el.className,
+                                            innerHTML: el.innerHTML.substring(0, 500),
+                                            attributes: Array.from(el.attributes).map(a => ({name: a.name, value: a.value}))
+                                        };
                                     }
-                                };
+                                    
+                                    return {
+                                        // All scripts on the page
+                                        scripts: Array.from(document.querySelectorAll('script')).map(s => ({
+                                            src: s.src,
+                                            hasInnerText: s.innerText.length > 0,
+                                            innerTextStart: s.innerText.substring(0, 200)
+                                        })),
+                                        
+                                        // All iframes
+                                        iframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
+                                            src: iframe.src,
+                                            id: iframe.id,
+                                            title: iframe.title,
+                                            name: iframe.name
+                                        })),
+                                        
+                                        // All forms
+                                        forms: Array.from(document.querySelectorAll('form')).map(form => getElementInfo(form)),
+                                        
+                                        // All inputs
+                                        inputs: Array.from(document.querySelectorAll('input')).map(input => ({
+                                            type: input.type,
+                                            name: input.name,
+                                            id: input.id,
+                                            value: input.value ? '***' : '',
+                                            className: input.className
+                                        })),
+                                        
+                                        // Cloudflare-specific elements
+                                        cloudflareElements: {
+                                            cfWrapper: getElementInfo(document.querySelector('#cf-wrapper')),
+                                            cfChallenge: getElementInfo(document.querySelector('[id*="challenge"]')),
+                                            turnstileDiv: getElementInfo(document.querySelector('.cf-turnstile')),
+                                            turnstileResponse: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]')),
+                                            challengeForm: getElementInfo(document.querySelector('#challenge-form'))
+                                        },
+                                        
+                                        // Page metadata
+                                        metadata: {
+                                            title: document.title,
+                                            url: window.location.href,
+                                            bodyClasses: document.body.className,
+                                            bodyId: document.body.id
+                                        }
+                                    };
+                                })();
                             """)
                             
                             # Save structure as JSON
@@ -2524,56 +2537,58 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 
                 # Capture CAPTCHA structure
                 captcha_info = sb.execute_script("""
-                    function getElementInfo(el) {
-                        if (!el) return null;
+                    (() => {
+                        function getElementInfo(el) {
+                            if (!el) return null;
+                            return {
+                                tagName: el.tagName,
+                                id: el.id,
+                                className: el.className,
+                                visible: el.offsetParent !== null,
+                                dimensions: {width: el.offsetWidth, height: el.offsetHeight},
+                                position: {top: el.offsetTop, left: el.offsetLeft}
+                            };
+                        }
+                        
                         return {
-                            tagName: el.tagName,
-                            id: el.id,
-                            className: el.className,
-                            visible: el.offsetParent !== null,
-                            dimensions: {width: el.offsetWidth, height: el.offsetHeight},
-                            position: {top: el.offsetTop, left: el.offsetLeft}
+                            // reCAPTCHA elements
+                            recaptcha: {
+                                iframe: getElementInfo(document.querySelector('iframe[src*="recaptcha"]')),
+                                div: getElementInfo(document.querySelector('.g-recaptcha')),
+                                checkbox: getElementInfo(document.querySelector('#recaptcha-anchor')),
+                                responseField: getElementInfo(document.querySelector('#g-recaptcha-response'))
+                            },
+                            
+                            // Cloudflare Turnstile
+                            turnstile: {
+                                div: getElementInfo(document.querySelector('.cf-turnstile')),
+                                iframe: getElementInfo(document.querySelector('iframe[src*="challenges.cloudflare.com"]')),
+                                responseField: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]'))
+                            },
+                            
+                            // hCaptcha
+                            hcaptcha: {
+                                div: getElementInfo(document.querySelector('.h-captcha')),
+                                iframe: getElementInfo(document.querySelector('iframe[src*="hcaptcha"]'))
+                            },
+                            
+                            // Generic CAPTCHA containers
+                            generic: {
+                                captchaDiv: getElementInfo(document.querySelector('[class*="captcha"]')),
+                                captchaContainer: getElementInfo(document.querySelector('#captcha'))
+                            },
+                            
+                            // All iframes
+                            allIframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
+                                src: iframe.src,
+                                id: iframe.id,
+                                className: iframe.className,
+                                visible: iframe.offsetParent !== null,
+                                width: iframe.width,
+                                height: iframe.height
+                            }))
                         };
-                    }
-                    
-                    return {
-                        // reCAPTCHA elements
-                        recaptcha: {
-                            iframe: getElementInfo(document.querySelector('iframe[src*="recaptcha"]')),
-                            div: getElementInfo(document.querySelector('.g-recaptcha')),
-                            checkbox: getElementInfo(document.querySelector('#recaptcha-anchor')),
-                            responseField: getElementInfo(document.querySelector('#g-recaptcha-response'))
-                        },
-                        
-                        // Cloudflare Turnstile
-                        turnstile: {
-                            div: getElementInfo(document.querySelector('.cf-turnstile')),
-                            iframe: getElementInfo(document.querySelector('iframe[src*="challenges.cloudflare.com"]')),
-                            responseField: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]'))
-                        },
-                        
-                        // hCaptcha
-                        hcaptcha: {
-                            div: getElementInfo(document.querySelector('.h-captcha')),
-                            iframe: getElementInfo(document.querySelector('iframe[src*="hcaptcha"]'))
-                        },
-                        
-                        // Generic CAPTCHA containers
-                        generic: {
-                            captchaDiv: getElementInfo(document.querySelector('[class*="captcha"]')),
-                            captchaContainer: getElementInfo(document.querySelector('#captcha'))
-                        },
-                        
-                        // All iframes
-                        allIframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
-                            src: iframe.src,
-                            id: iframe.id,
-                            className: iframe.className,
-                            visible: iframe.offsetParent !== null,
-                            width: iframe.width,
-                            height: iframe.height
-                        }))
-                    };
+                    })();
                 """)
                 
                 print("[PreSubmit] ===== CAPTCHA DETECTION =====")
@@ -2727,76 +2742,78 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                 
                 # Capture post-login page structure
                 postlogin_structure = sb.execute_script("""
-                    function getElementInfo(el) {
-                        if (!el) return null;
+                    (() => {
+                        function getElementInfo(el) {
+                            if (!el) return null;
+                            return {
+                                tagName: el.tagName,
+                                id: el.id,
+                                className: el.className,
+                                innerHTML: el.innerHTML.substring(0, 500),
+                                outerHTML: el.outerHTML.substring(0, 800),
+                                attributes: Array.from(el.attributes).map(a => ({name: a.name, value: a.value}))
+                            };
+                        }
+                        
                         return {
-                            tagName: el.tagName,
-                            id: el.id,
-                            className: el.className,
-                            innerHTML: el.innerHTML.substring(0, 500),
-                            outerHTML: el.outerHTML.substring(0, 800),
-                            attributes: Array.from(el.attributes).map(a => ({name: a.name, value: a.value}))
+                            // Page info
+                            url: window.location.href,
+                            title: document.title,
+                            
+                            // All iframes
+                            iframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
+                                src: iframe.src,
+                                id: iframe.id,
+                                title: iframe.title,
+                                name: iframe.name,
+                                className: iframe.className,
+                                width: iframe.width,
+                                height: iframe.height
+                            })),
+                            
+                            // CAPTCHA-specific elements
+                            captchaElements: {
+                                // reCAPTCHA
+                                recaptchaIframe: getElementInfo(document.querySelector('iframe[src*="recaptcha"]')),
+                                recaptchaDiv: getElementInfo(document.querySelector('.g-recaptcha')),
+                                recaptchaResponse: getElementInfo(document.querySelector('#g-recaptcha-response')),
+                                recaptchaV3: getElementInfo(document.querySelector('.grecaptcha-badge')),
+                                
+                                // Cloudflare Turnstile
+                                turnstileDiv: getElementInfo(document.querySelector('.cf-turnstile')),
+                                turnstileResponse: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]')),
+                                
+                                // Generic CAPTCHA
+                                captchaContainer: getElementInfo(document.querySelector('[class*="captcha"]')),
+                                captchaDiv: getElementInfo(document.querySelector('#captcha')),
+                                
+                                // hCaptcha
+                                hcaptchaIframe: getElementInfo(document.querySelector('iframe[src*="hcaptcha"]')),
+                                hcaptchaDiv: getElementInfo(document.querySelector('.h-captcha'))
+                            },
+                            
+                            // All scripts
+                            scripts: Array.from(document.querySelectorAll('script[src]')).map(s => s.src),
+                            
+                            // Forms
+                            forms: Array.from(document.querySelectorAll('form')).map(form => ({
+                                id: form.id,
+                                name: form.name,
+                                action: form.action,
+                                method: form.method,
+                                className: form.className
+                            })),
+                            
+                            // Error messages
+                            errorMessages: Array.from(document.querySelectorAll('.error, .alert, [class*="error"], [class*="alert"]')).map(el => ({
+                                className: el.className,
+                                text: el.innerText.substring(0, 200)
+                            })),
+                            
+                            // Body text for error detection
+                            bodyText: document.body.innerText
                         };
-                    }
-                    
-                    return {
-                        // Page info
-                        url: window.location.href,
-                        title: document.title,
-                        
-                        // All iframes
-                        iframes: Array.from(document.querySelectorAll('iframe')).map(iframe => ({
-                            src: iframe.src,
-                            id: iframe.id,
-                            title: iframe.title,
-                            name: iframe.name,
-                            className: iframe.className,
-                            width: iframe.width,
-                            height: iframe.height
-                        })),
-                        
-                        // CAPTCHA-specific elements
-                        captchaElements: {
-                            // reCAPTCHA
-                            recaptchaIframe: getElementInfo(document.querySelector('iframe[src*="recaptcha"]')),
-                            recaptchaDiv: getElementInfo(document.querySelector('.g-recaptcha')),
-                            recaptchaResponse: getElementInfo(document.querySelector('#g-recaptcha-response')),
-                            recaptchaV3: getElementInfo(document.querySelector('.grecaptcha-badge')),
-                            
-                            // Cloudflare Turnstile
-                            turnstileDiv: getElementInfo(document.querySelector('.cf-turnstile')),
-                            turnstileResponse: getElementInfo(document.querySelector('input[name="cf-turnstile-response"]')),
-                            
-                            // Generic CAPTCHA
-                            captchaContainer: getElementInfo(document.querySelector('[class*="captcha"]')),
-                            captchaDiv: getElementInfo(document.querySelector('#captcha')),
-                            
-                            // hCaptcha
-                            hcaptchaIframe: getElementInfo(document.querySelector('iframe[src*="hcaptcha"]')),
-                            hcaptchaDiv: getElementInfo(document.querySelector('.h-captcha'))
-                        },
-                        
-                        // All scripts
-                        scripts: Array.from(document.querySelectorAll('script[src]')).map(s => s.src),
-                        
-                        // Forms
-                        forms: Array.from(document.querySelectorAll('form')).map(form => ({
-                            id: form.id,
-                            name: form.name,
-                            action: form.action,
-                            method: form.method,
-                            className: form.className
-                        })),
-                        
-                        // Error messages
-                        errorMessages: Array.from(document.querySelectorAll('.error, .alert, [class*="error"], [class*="alert"]')).map(el => ({
-                            className: el.className,
-                            text: el.innerText.substring(0, 200)
-                        })),
-                        
-                        // Body text for error detection
-                        bodyText: document.body.innerText
-                    };
+                    })();
                 """)
                 
                 # Save structure as JSON
