@@ -2469,7 +2469,7 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     pass
                 return False
 
-            # STEP 1: Enter credentials first (NO CAPTCHA solving yet)
+            # STEP 1: Enter credentials first (this often triggers the CAPTCHA to load)
             print("[Login] Entering credentials...")
             sb.sleep(0.5 + random.random())
             
@@ -2510,7 +2510,115 @@ def login_with_proxy_and_save_cookies(target_url: str) -> bool:
                     password_field.send_keys(char)
                     sb.sleep(0.05 + random.random() * 0.1)
                 
-                sb.sleep(1.0 + random.random())  # Pause before CAPTCHA check (human-like)
+                # CRITICAL: Pause to allow the in-form CAPTCHA to load after credential entry
+                print("[Login] ⏳ Pausing to allow in-form CAPTCHA to load dynamically...")
+                sb.sleep(3.0)  # Allow Turnstile widget to load
+                
+                # CRITICAL: Check for Turnstile verification button that appears AFTER entering credentials
+                print("[Login] 🔍 Checking for post-credential Turnstile verification button...")
+                turnstile_button_found = False
+                turnstile_button_selectors = [
+                    "button:contains('Gerçek bir kişi olduğunuzu doğrulayın')",  # "Verify you are a real person"
+                    "button:contains('doğrulayın')",  # Contains "verify"
+                    "div.cf-turnstile button",  # Button inside Turnstile div
+                    "iframe[src*='challenges.cloudflare.com']",  # Turnstile iframe indicator
+                ]
+                
+                # Check if Turnstile button is present
+                try:
+                    # Use JavaScript to find button with specific text
+                    button_check = sb.execute_script("""
+                        (() => {
+                            // Look for button with Turkish verification text
+                            const buttons = Array.from(document.querySelectorAll('button'));
+                            const verifyButton = buttons.find(btn => 
+                                btn.textContent.includes('Gerçek bir kişi') || 
+                                btn.textContent.includes('doğrulayın') ||
+                                btn.textContent.includes('Verify')
+                            );
+                            
+                            if (verifyButton) {
+                                return {
+                                    found: true,
+                                    text: verifyButton.textContent,
+                                    visible: verifyButton.offsetParent !== null,
+                                    className: verifyButton.className,
+                                    id: verifyButton.id
+                                };
+                            }
+                            
+                            // Also check for Turnstile iframe
+                            const turnstileIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+                            const turnstileDiv = document.querySelector('.cf-turnstile');
+                            
+                            return {
+                                found: false,
+                                hasTurnstileIframe: !!turnstileIframe,
+                                hasTurnstileDiv: !!turnstileDiv
+                            };
+                        })();
+                    """)
+                    
+                    if button_check.get('found'):
+                        print(f"[Login] ✓ Found Turnstile verification button!")
+                        print(f"[Login]   Text: {button_check.get('text', 'N/A')}")
+                        print(f"[Login]   Visible: {button_check.get('visible', False)}")
+                        turnstile_button_found = True
+                        
+                        # Take screenshot before clicking
+                        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                        shot = os.path.join(SCREENSHOTS_DIR, f"before_turnstile_click_{ts}.png")
+                        sb.save_screenshot(shot)
+                        print(f"[Login] Screenshot before Turnstile click: {shot}")
+                        
+                        # Click the Turnstile button using UC Mode
+                        print("[Login] 🖱️ Clicking Turnstile verification button with uc_gui_click_captcha()...")
+                        try:
+                            sb.uc_gui_click_captcha()
+                            print("[Login] ✓ Turnstile button clicked!")
+                            
+                            # Wait for checkmark to appear
+                            print("[Login] ⏳ Waiting for Turnstile validation (2s)...")
+                            sb.sleep(2.0)
+                            
+                            # Take screenshot after clicking
+                            shot_after = os.path.join(SCREENSHOTS_DIR, f"after_turnstile_click_{ts}.png")
+                            sb.save_screenshot(shot_after)
+                            print(f"[Login] Screenshot after Turnstile click: {shot_after}")
+                            
+                        except Exception as e:
+                            print(f"[Login] ⚠️ Turnstile button click failed: {e}")
+                            # Try alternative click methods
+                            try:
+                                print("[Login] Trying alternative click methods...")
+                                buttons = sb.find_elements("button")
+                                for btn in buttons:
+                                    if "doğrulayın" in btn.text or "Gerçek" in btn.text:
+                                        btn.click()
+                                        print("[Login] ✓ Clicked verification button with alternative method")
+                                        sb.sleep(2.0)
+                                        break
+                            except Exception as e2:
+                                print(f"[Login] ⚠️ Alternative click also failed: {e2}")
+                    
+                    elif button_check.get('hasTurnstileIframe') or button_check.get('hasTurnstileDiv'):
+                        print("[Login] ⚠️ Turnstile iframe/div found but no visible button")
+                        print("[Login] Attempting uc_gui_click_captcha() anyway...")
+                        try:
+                            sb.uc_gui_click_captcha()
+                            sb.sleep(2.0)
+                        except Exception as e:
+                            print(f"[Login] UC click attempt failed: {e}")
+                    else:
+                        print("[Login] ℹ️ No post-credential Turnstile verification button found")
+                        
+                except Exception as e:
+                    print(f"[Login] ⚠️ Turnstile button detection error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                # Additional pause after credential entry and potential CAPTCHA interaction
+                sb.sleep(1.0 + random.random())
                 
             except Exception as e:
                 print(f"[Login] Credential entry failed: {e}")
