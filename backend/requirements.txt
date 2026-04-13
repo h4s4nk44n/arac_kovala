@@ -1,8 +1,7 @@
-seleniumbase>=4.25.1
+scrapling[all]
+capsolver
 Flask
 Flask-Cors
 requests
 gunicorn
-pyvirtualdisplay
-PyAutoGUI
-2captcha-python
+APScheduler>=3.10

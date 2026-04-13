@@ -1,19 +1,14 @@
 FROM python:3.11-slim-bookworm
 
-# Updated: 2025-10-19 - Fixed Chrome installation with gnupg
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PORT=8080
+    PORT=8080 \
+    HEADLESS=1
 
-## Install Google Chrome stable and runtime deps
+# Playwright/patchright runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl wget gnupg gnupg2 gpg-agent apt-transport-https && \
-    mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome-keyring.gpg && \
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    google-chrome-stable \
+    ca-certificates curl wget \
     fonts-liberation fonts-noto-color-emoji fonts-noto-cjk \
     libasound2 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
     libcairo2 libcups2 libdbus-1-3 libdrm2 \
@@ -21,33 +16,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 \
     libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
     libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 \
-    libgbm1 libxshmfence1 xdg-utils xvfb xauth \
-    libu2f-udev \
-    scrot python3-tk python3-dev && \
+    libgbm1 libxshmfence1 && \
     rm -rf /var/lib/apt/lists/*
-
-ENV CHROME_BIN=/usr/bin/google-chrome \
-    SB_CHROME_BINARY=/usr/bin/google-chrome \
-    HEADLESS=0 \
-    DBUS_SESSION_BUS_ADDRESS=/dev/null
 
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install -r requirements.txt
+    pip install -r requirements.txt && \
+    scrapling install && \
+    python -m patchright install chromium
+
 COPY . /app
 
-# Verify Chrome installation and create test script
-RUN google-chrome --version && \
-    echo '#!/bin/bash\nexec google-chrome "$@"' > /usr/local/bin/chrome-wrapper && \
-    chmod +x /usr/local/bin/chrome-wrapper
-
-# Recommend environment flags for Chrome inside containers
-ENV EXTRA_CHROME_ARGS="--disable-dev-shm-usage,--no-sandbox"
-
-# Fix chromedriver permissions at build time (after pip install)
-RUN find /usr/local/lib/python*/site-packages/seleniumbase/drivers/ -name "chromedriver*" -exec chmod +x {} \; 2>/dev/null || true
-
-# Use shell form of CMD to allow Railway's PORT env var substitution
-CMD xvfb-run -a -s "-screen 0 1920x1080x24" gunicorn -w 1 -k gthread --bind 0.0.0.0:${PORT:-8080} --timeout 120 --access-logfile - --error-logfile - --log-level info app:app
+CMD gunicorn -w 1 -k gthread --bind 0.0.0.0:${PORT:-8080} --timeout 300 --access-logfile - --error-logfile - --log-level info app:app
