@@ -65,7 +65,7 @@ HEADLESS = os.getenv("HEADLESS", "1") in ("1", "true", "True", "YES", "yes")
 # SCRAPER SETTINGS
 # ============================================================================
 
-SCRAPE_INTERVAL_SEC = int(os.getenv("SCRAPE_INTERVAL_SEC", "900"))  # 15 min default
+SCRAPE_INTERVAL_SEC = int(os.getenv("SCRAPE_INTERVAL_SEC", "20"))  # 20s default
 ALLOW_LOGIN = os.getenv("ALLOW_LOGIN", "1") in ("1", "true", "True", "YES", "yes")
 MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "3"))
 LOGIN_COOLDOWN_SEC = int(os.getenv("LOGIN_COOLDOWN_SEC", "5"))
@@ -80,7 +80,7 @@ FORCE_FRESH_LOGIN = os.getenv("FORCE_FRESH_LOGIN", "0") == "1"
 # SCHEDULING SETTINGS
 # ============================================================================
 
-SCRAPE_JITTER_SEC = int(os.getenv("SCRAPE_JITTER_SEC", "120"))      # 0-120s random jitter
+SCRAPE_JITTER_SEC = int(os.getenv("SCRAPE_JITTER_SEC", "5"))        # 0-5s random jitter
 BACKOFF_MULTIPLIER = float(os.getenv("BACKOFF_MULTIPLIER", "2.0"))
 MAX_BACKOFF_SEC = int(os.getenv("MAX_BACKOFF_SEC", "3600"))          # 1 hour max
 COOKIE_REFRESH_HOURS = int(os.getenv("COOKIE_REFRESH_HOURS", "20"))
