@@ -247,10 +247,6 @@ class Scraper:
         for attempt in range(1, max_retries + 1):
             print(f"[Login] Attempt {attempt}/{max_retries}")
 
-            if attempt > 1 and os.path.exists(config.SESSION_COOKIE_FILE):
-                print("[Login] Found existing cookies from previous attempt, using those")
-                return True
-
             if self.login():
                 return True
 
@@ -347,8 +343,9 @@ class Scraper:
             except Exception:
                 pass
 
+        proxy_url = _get_proxy_url(rotate_session=False)
         try:
-            response = StealthyFetcher.fetch(
+            fetch_kwargs = dict(
                 url=url,
                 headless=True,
                 solve_cloudflare=True,
@@ -360,6 +357,9 @@ class Scraper:
                 timezone_id="Europe/Istanbul",
                 page_action=_scrape_action,
             )
+            if proxy_url:
+                fetch_kwargs["proxy"] = proxy_url
+            response = StealthyFetcher.fetch(**fetch_kwargs)
         except Exception as e:
             print(f"[Scrape] Fetch failed: {e}")
             raise NeedsLogin(f"Fetch error: {e}")
