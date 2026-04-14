@@ -11,7 +11,7 @@ from scrapling.fetchers import StealthyFetcher
 import config
 from proxy_utils import _get_proxy_url
 from cookie_utils import save_cookies, load_cookies
-from image_utils import _extract_img_src, _download_image
+from image_utils import _extract_img_src, _download_image, delete_image
 from captcha import solve_turnstile_if_present, solve_recaptcha_v2_if_present
 from state import STATE_LOCK, FILTERS, POSTS, KNOWN_IDS, _save_data_to_disk
 from notifications import send_new_post_notification
@@ -570,8 +570,15 @@ class Scraper:
                         if post['id'] not in seen:
                             unique.append(post)
                             seen.add(post['id'])
-                    POSTS[fid] = sorted(unique, key=lambda p: p.get('discovered_at', ''), reverse=True)[:50]
+                    sorted_posts = sorted(unique, key=lambda p: p.get('discovered_at', ''), reverse=True)
+                    kept = sorted_posts[:20]
+                    pruned = sorted_posts[20:]
+                    POSTS[fid] = kept
                     KNOWN_IDS[fid].update(p['id'] for p in new_posts)
+
+                # Delete images for pruned posts (outside lock)
+                for post in pruned:
+                    delete_image(post.get('image'))
 
                 print(f"Sending notifications for {len(new_posts)} new posts...")
                 for post in new_posts:

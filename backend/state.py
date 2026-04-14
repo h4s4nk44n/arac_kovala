@@ -40,6 +40,18 @@ def _load_data_from_disk():
             print(f"Failed to read known_ids.json: {e}")
 
 
+def get_all_image_filenames():
+    """Return set of image filenames currently referenced by active posts."""
+    filenames = set()
+    with STATE_LOCK:
+        for posts_list in POSTS.values():
+            for post in posts_list:
+                img = post.get('image')
+                if img:
+                    filenames.add(img)
+    return filenames
+
+
 def _save_data_to_disk():
     with STATE_LOCK:
         try:

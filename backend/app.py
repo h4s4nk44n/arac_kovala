@@ -90,6 +90,12 @@ def bootstrap():
         from proxy_utils import test_proxy_connectivity
         test_proxy_connectivity()
         _load_data_from_disk()
+
+        # Clean up orphaned images to free disk space
+        from image_utils import cleanup_orphaned_images
+        from state import get_all_image_filenames
+        cleanup_orphaned_images(get_all_image_filenames())
+
         load_push_tokens()
 
         def _background_init():

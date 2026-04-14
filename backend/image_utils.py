@@ -38,6 +38,42 @@ def _guess_extension_from_response(resp, fallback_url):
     return base_ext if base_ext else '.jpg'
 
 
+def delete_image(filename):
+    """Delete an image file from the images directory. Handles missing files gracefully."""
+    if not filename:
+        return
+    try:
+        path = os.path.join(str(config.IMAGES_DIR), filename)
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+
+def cleanup_orphaned_images(valid_filenames):
+    """Delete images not referenced by any active post. Logs freed space."""
+    images_dir = str(config.IMAGES_DIR)
+    if not os.path.isdir(images_dir):
+        return
+    valid = set(valid_filenames)
+    freed = 0
+    removed = 0
+    for name in os.listdir(images_dir):
+        if name.endswith('.tmp') or name in valid:
+            continue
+        path = os.path.join(images_dir, name)
+        try:
+            freed += os.path.getsize(path)
+            os.remove(path)
+            removed += 1
+        except Exception:
+            pass
+    if removed:
+        print(f"[Cleanup] Removed {removed} orphaned images, freed {freed / 1024 / 1024:.1f} MB")
+    else:
+        print("[Cleanup] No orphaned images found")
+
+
 def _download_image(image_url, post_id):
     if not image_url:
         return None
