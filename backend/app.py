@@ -28,6 +28,26 @@ _BOOTSTRAPPED = False
 _BOOTSTRAP_LOCK = threading.Lock()
 
 
+def _cleanup_diagnostic_dirs():
+    """Remove old screenshots and HTML snapshots to free disk space."""
+    import glob
+    total_freed = 0
+    total_removed = 0
+    for d in [str(config.SCREENSHOTS_DIR), str(config.HTML_SNAPSHOTS_DIR)]:
+        if not os.path.isdir(d):
+            continue
+        for f in os.listdir(d):
+            path = os.path.join(d, f)
+            try:
+                total_freed += os.path.getsize(path)
+                os.remove(path)
+                total_removed += 1
+            except Exception:
+                pass
+    if total_removed:
+        print(f"[Cleanup] Removed {total_removed} diagnostic files, freed {total_freed / 1024 / 1024:.1f} MB")
+
+
 def _ensure_valid_session():
     """Ensure we have valid session cookies on startup."""
     need_fresh = False
@@ -95,6 +115,9 @@ def bootstrap():
         from image_utils import cleanup_orphaned_images
         from state import get_all_image_filenames
         cleanup_orphaned_images(get_all_image_filenames())
+
+        # Clean up diagnostic files (screenshots + HTML snapshots)
+        _cleanup_diagnostic_dirs()
 
         load_push_tokens()
 
