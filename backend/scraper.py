@@ -101,7 +101,9 @@ class Scraper:
             print("[Login] Missing SAHIBINDEN_USER/SAHIBINDEN_PASS")
             return False
 
-        print(f"[Login] Starting proxy login session...")
+        # Log proxy URL with password redacted for debugging
+        redacted = proxy_url.split("@")[-1] if "@" in proxy_url else proxy_url
+        print(f"[Login] Starting proxy login session via {redacted}")
 
         # Shared result container for the page_action callback
         result = {"success": False, "cookies": []}

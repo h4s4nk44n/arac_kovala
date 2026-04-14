@@ -87,6 +87,8 @@ def bootstrap():
             return
         print("--- Bootstrapping Application ---")
         config.print_config_summary()
+        from proxy_utils import test_proxy_connectivity
+        test_proxy_connectivity()
         _load_data_from_disk()
         load_push_tokens()
 

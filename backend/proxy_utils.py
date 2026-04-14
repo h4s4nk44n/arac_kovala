@@ -1,4 +1,5 @@
 import uuid
+import socket
 import secrets
 
 import config
@@ -38,3 +39,48 @@ def _get_proxy_url(rotate_session=False):
             print(f"[Proxy] Rotating session: {sid}")
         return f"http://{proxy_auth}@{proxy_host_port}"
     return build_brightdata_proxy_string()
+
+
+def test_proxy_connectivity():
+    """Test proxy connectivity and log diagnostics. Call at startup."""
+    proxy_host_port = config.IPROYAL_PROXY
+    if not proxy_host_port:
+        print("[Proxy Test] No proxy configured, skipping connectivity test")
+        return
+
+    # Parse host and port
+    if ":" in proxy_host_port:
+        host, port_str = proxy_host_port.rsplit(":", 1)
+        port = int(port_str)
+    else:
+        host = proxy_host_port
+        port = 12321
+
+    # Test 1: Raw TCP connection to proxy
+    print(f"[Proxy Test] Testing TCP connection to {host}:{port}...")
+    try:
+        sock = socket.create_connection((host, port), timeout=10)
+        sock.close()
+        print(f"[Proxy Test] TCP connection to {host}:{port} OK")
+    except socket.timeout:
+        print(f"[Proxy Test] FAILED: TCP connection to {host}:{port} timed out (port likely blocked by Railway)")
+        return
+    except OSError as e:
+        print(f"[Proxy Test] FAILED: TCP connection to {host}:{port} error: {e}")
+        return
+
+    # Test 2: HTTP request through the proxy
+    proxy_url = _get_proxy_url(rotate_session=False)
+    if not proxy_url:
+        print("[Proxy Test] Could not build proxy URL, skipping HTTP test")
+        return
+
+    print("[Proxy Test] Testing HTTP request through proxy...")
+    try:
+        import requests
+        proxies = {"http": proxy_url, "https": proxy_url}
+        resp = requests.get("https://ipv4.icanhazip.com", proxies=proxies, timeout=15)
+        ip = resp.text.strip()
+        print(f"[Proxy Test] HTTP through proxy OK. Exit IP: {ip}")
+    except Exception as e:
+        print(f"[Proxy Test] FAILED: HTTP through proxy error: {e}")
